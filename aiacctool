@@ -166,7 +166,15 @@ def cmd_status(args):
         print(f"  • Gateway Server: {srv_str}")
         print(f"  • Today Activity: {BOLD}{r9.get('today_requests')}{RESET} requests · {BOLD}{r9.get('today_tokens')}{RESET} tokens")
         if r9.get("provider_count") > 0:
-            print(f"  • Local Providers: {r9.get('provider_count')} configured")
+            print(f"  • Total Connections: {r9.get('provider_count')} active")
+        filtered_p = r9.get("filtered_providers", {})
+        if filtered_p:
+            print(f"  • Monitored Providers ({len(filtered_p)}):")
+            for p_name, p_info in sorted(filtered_p.items()):
+                act = p_info.get("active_count", 0)
+                tot = p_info.get("count", 0)
+                acc = f" [{', '.join(p_info.get('accounts', [])[:2])}]" if p_info.get('accounts') else ""
+                print(f"     - {BOLD}{p_name:18}{RESET} : {GREEN}{act}/{tot} active{RESET}{acc}")
 
     # 5. OmniRoute
     om = data.get("omniroute", {})
@@ -213,6 +221,30 @@ def cmd_theme(args):
             print(f"{RED}✖ {msg}{RESET}")
 
 
+def cmd_providers(args):
+    data = ai_collector.collect_all()
+    r9 = data.get("nine_router", {})
+    all_p = r9.get("all_providers", {})
+    filtered_p = r9.get("filtered_providers", {})
+
+    if args.action == "list" or not args.action:
+        print(f"\n{BOLD}{CYAN}9Router Upstream Providers:{RESET}")
+        for p_name, p_info in sorted(all_p.items()):
+            is_mon = p_name in filtered_p
+            mark = f"{GREEN}☑ (monitored){RESET}" if is_mon else f"{DIM}☐{RESET}"
+            act = p_info.get("active_count", 0)
+            tot = p_info.get("count", 0)
+            acc = f" [{', '.join(p_info.get('accounts', [])[:2])}]" if p_info.get('accounts') else ""
+            print(f"  {mark} {BOLD}{p_name:18}{RESET} : {act}/{tot} active{acc}")
+        print(f"\nTo toggle monitoring: {CYAN}aiacctool router toggle <provider_name>{RESET}\n")
+    elif args.action == "toggle":
+        if not args.name:
+            print(f"{RED}Please specify provider name to toggle.{RESET}")
+            return
+        ok, msg = ai_collector.toggle_router_provider("9router", args.name)
+        print(f"{GREEN if ok else RED}{msg}{RESET}")
+
+
 def cmd_config(args):
     cfg_file = ai_collector.CONFIG_FILE
     if args.edit:
@@ -251,6 +283,13 @@ def main():
     p_theme_set = p_theme_sub.add_parser("set", help="Set active theme")
     p_theme_set.add_argument("name", help="Name of theme (catppuccin, nord, dracula, cyberpunk, monochrome, default)")
 
+    # router providers command
+    p_router = subparsers.add_parser("router", help="Manage monitored upstream providers for 9Router and OmniRoute")
+    p_router_sub = p_router.add_subparsers(dest="action")
+    p_router_sub.add_parser("list", help="List all available and monitored providers")
+    p_router_tog = p_router_sub.add_parser("toggle", help="Toggle monitoring for a specific provider")
+    p_router_tog.add_argument("name", help="Name of the provider (e.g. glm, kiro, codex, gemini, openrouter)")
+
     # config command
     p_config = subparsers.add_parser("config", help="View or edit configuration file")
     p_config.add_argument("--edit", "-e", action="store_true", help="Open config file in $EDITOR")
@@ -265,6 +304,8 @@ def main():
         cmd_config(args)
     elif args.command == "theme":
         cmd_theme(args)
+    elif args.command == "router":
+        cmd_providers(args)
 
 
 if __name__ == "__main__":

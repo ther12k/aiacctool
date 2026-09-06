@@ -5,12 +5,12 @@ Collects real-time usage, limits, and reset countdowns for:
 - GLM (Z.ai / BigModel)
 - Google Antigravity (Local Language Server / agy)
 - OpenAI Codex (wham/usage)
-- 9Router (Local SQLite DB + local/remote dashboard API)
-- OmniRoute (Local/remote gateway)
+- 9Router (Local SQLite DB + local/remote dashboard API + Provider Connection Monitor)
+- OmniRoute (Local/remote gateway + Provider Connection Monitor)
 - OpenRouter / Custom APIs
 
-Includes rich theming system (Catppuccin, Nord, Dracula, Cyberpunk, Monochrome, Default)
-and custom fonts, colors, and icons.
+Includes rich theming system (Catppuccin, Nord, Dracula, Cyberpunk, Monochrome, Default),
+custom fonts, colors, and per-provider filtering.
 """
 
 import os
@@ -19,6 +19,7 @@ import json
 import time
 import re
 import datetime
+import glob
 import subprocess
 import urllib.request
 import urllib.error
@@ -39,7 +40,7 @@ THEME_PRESETS = {
         "icon_warn": "dialog-warning-symbolic",
         "icon_err": "network-offline-symbolic",
         "menu_header_color": "#8ab4f8",
-        "menu_section_color": "#e8eaed",
+        "menu_section_color": "#8ab4f8",
         "menu_ok_color": "#81c995",
         "menu_warn_color": "#fdd663",
         "menu_err_color": "#f28b82",
@@ -184,8 +185,8 @@ THEME_PRESETS = {
 DEFAULT_CONFIG = {
     "theme": "default",
     "poll_interval_sec": 30,
-    "panel_position": "center",  # "center" (next to clock), "left", "right"
-    "panel_format": "compact",  # "compact", "standard", "full", "minimal"
+    "panel_position": "center",  # "center", "left", "right"
+    "panel_format": "compact",   # "compact", "standard", "full", "minimal"
     "show_reset_in_topbar": True,
     "show_icon": True,
     "appearance": {
@@ -216,12 +217,14 @@ DEFAULT_CONFIG = {
             "enabled": True,
             "base_url": "http://localhost:20128",
             "remote_url": "",
-            "auto_detect": True
+            "auto_detect": True,
+            "monitored_providers": ["glm", "kiro", "gemini", "gemini-cli", "openai-compatible"]
         },
         "omniroute": {
             "enabled": True,
             "base_url": "http://localhost:20128",
-            "auto_detect": True
+            "auto_detect": True,
+            "monitored_providers": []
         },
         "openrouter": {
             "enabled": False,
@@ -251,7 +254,6 @@ def load_config():
     try:
         with open(CONFIG_FILE, "r") as f:
             cfg = json.load(f)
-            # Ensure default keys
             for k, v in DEFAULT_CONFIG.items():
                 if k not in cfg:
                     cfg[k] = v
@@ -276,7 +278,6 @@ def get_active_theme(cfg):
     theme_name = cfg.get("theme", "default")
     base_theme = THEME_PRESETS.get(theme_name, THEME_PRESETS["default"]).copy()
 
-    # Apply user overrides from appearance
     app = cfg.get("appearance", {})
     if app.get("topbar_color"):
         base_theme["topbar_color"] = app["topbar_color"]
@@ -581,6 +582,67 @@ def check_codex(cfg):
         return {"enabled": True, "status": "error", "error": str(e)}
 
 
+def discover_router_providers():
+    """
+    Discovers all configured provider connections from 9Router DB or recent backups,
+    normalizing names, status, and active counts.
+    """
+    conns = []
+    db_path = Path.home() / ".9router" / "db" / "data.sqlite"
+    if db_path.exists():
+        try:
+            import sqlite3
+            conn = sqlite3.connect(db_path)
+            cur = conn.cursor()
+            cur.execute('SELECT id, provider, name, email, isActive, testStatus, lastError FROM providerConnections;')
+            for r in cur.fetchall():
+                conns.append({
+                    'id': r[0], 'provider': r[1], 'name': r[2], 'email': r[3],
+                    'active': bool(r[4]), 'testStatus': r[5], 'lastError': r[6]
+                })
+            conn.close()
+        except Exception:
+            pass
+
+    if not conns:
+        backups = sorted(glob.glob(os.path.expanduser('~/Downloads/BAK/9router-backup-*.json')), reverse=True)
+        if backups:
+            try:
+                with open(backups[0]) as f:
+                    d = json.load(f)
+                for r in d.get('providerConnections', []):
+                    conns.append({
+                        'id': r.get('id'), 'provider': r.get('provider'), 'name': r.get('name'),
+                        'email': r.get('email'), 'active': bool(r.get('isActive')),
+                        'testStatus': r.get('testStatus'), 'lastError': r.get('lastError')
+                    })
+            except Exception:
+                pass
+
+    grouped = {}
+    for c in conns:
+        raw_p = c.get('provider', 'other')
+        p = raw_p.split('-chat-')[0] if '-chat-' in raw_p else raw_p
+        if p not in grouped:
+            grouped[p] = {
+                'provider': p,
+                'count': 0,
+                'active_count': 0,
+                'accounts': [],
+                'has_error': False
+            }
+        grouped[p]['count'] += 1
+        if c.get('active'):
+            grouped[p]['active_count'] += 1
+        acc = c.get('name') or c.get('email')
+        if acc and acc not in grouped[p]['accounts']:
+            grouped[p]['accounts'].append(acc)
+        if c.get('lastError'):
+            grouped[p]['has_error'] = True
+
+    return grouped
+
+
 def check_9router(cfg):
     r_cfg = cfg.get("providers", {}).get("nine_router", {})
     if not r_cfg.get("enabled", True):
@@ -593,9 +655,12 @@ def check_9router(cfg):
         "remote_running": False,
         "today_requests": 0,
         "today_tokens": 0,
-        "provider_count": 0
+        "provider_count": 0,
+        "all_providers": {},
+        "filtered_providers": {}
     }
 
+    # 1. Check local SQLite DB for requests/tokens
     db_path = Path.home() / ".9router" / "db" / "data.sqlite"
     if db_path.exists():
         try:
@@ -612,6 +677,7 @@ def check_9router(cfg):
         except Exception:
             pass
 
+    # 2. Check local server health (port 20128)
     base_url = r_cfg.get("base_url", "http://localhost:20128").rstrip("/")
     try:
         with urllib.request.urlopen(f"{base_url}/api/health", timeout=2) as resp:
@@ -620,6 +686,7 @@ def check_9router(cfg):
     except Exception:
         result["local_running"] = False
 
+    # 3. Check remote server health (e.g. 9router.halotec.my.id)
     remote_url = r_cfg.get("remote_url", "").rstrip("/")
     if remote_url:
         try:
@@ -629,6 +696,33 @@ def check_9router(cfg):
                     result["remote_url"] = remote_url
         except Exception:
             result["remote_running"] = False
+
+    # 4. Discover all provider connections
+    all_p = discover_router_providers()
+    result["all_providers"] = all_p
+    if result["provider_count"] == 0:
+        result["provider_count"] = sum(p["active_count"] for p in all_p.values())
+
+    # 5. Filter by user's monitored_providers list
+    monitored = r_cfg.get("monitored_providers", [])
+    if monitored:
+        filtered = {}
+        for m in monitored:
+            if m in all_p:
+                filtered[m] = all_p[m]
+            else:
+                # Include even if 0 connections
+                filtered[m] = {
+                    "provider": m,
+                    "count": 0,
+                    "active_count": 0,
+                    "accounts": [],
+                    "has_error": False
+                }
+        result["filtered_providers"] = filtered
+    else:
+        # Default: show all active providers
+        result["filtered_providers"] = {k: v for k, v in all_p.items() if v["active_count"] > 0}
 
     return result
 
@@ -642,7 +736,9 @@ def check_omniroute(cfg):
     result = {
         "enabled": True,
         "status": "offline",
-        "url": base_url
+        "url": base_url,
+        "models_count": 0,
+        "filtered_providers": {}
     }
 
     try:
@@ -650,7 +746,21 @@ def check_omniroute(cfg):
         with urllib.request.urlopen(req, timeout=2) as resp:
             data = json.loads(resp.read().decode())
             result["status"] = "ok"
-            result["models_count"] = len(data.get("data", []))
+            models = data.get("data", [])
+            result["models_count"] = len(models)
+            # Group models by provider prefix (e.g. claude/..., gpt/..., glm/...)
+            prov_groups = {}
+            for m in models:
+                mid = m.get("id", "")
+                parts = mid.split("/")
+                p_name = parts[0] if len(parts) > 1 else mid.split("-")[0]
+                prov_groups[p_name] = prov_groups.get(p_name, 0) + 1
+
+            monitored = om_cfg.get("monitored_providers", [])
+            if monitored:
+                result["filtered_providers"] = {p: prov_groups.get(p, 0) for p in monitored}
+            else:
+                result["filtered_providers"] = prov_groups
     except Exception:
         result["status"] = "offline"
 
@@ -802,8 +912,6 @@ def generate_panel_summary(results, cfg, theme):
         has_ok = True
 
     badge_text = "  ".join(parts) if parts else ("AI Monitor" if has_ok else "AI Offline")
-
-    # Determine icon name based on theme and health
     icon = theme.get("icon_warn") if has_warning else (theme.get("icon_ok") if has_ok else theme.get("icon_err"))
 
     return {
@@ -845,6 +953,28 @@ def set_theme(theme_name):
     return True, f"Theme set to '{theme_name}' ({THEME_PRESETS[theme_name]['name']})"
 
 
+def toggle_router_provider(router_type, provider_name):
+    """
+    Toggles monitoring for a specific provider in 9router or omniroute.
+    """
+    cfg = load_config()
+    r_key = "nine_router" if "9" in router_type else "omniroute"
+    r_cfg = cfg.get("providers", {}).get(r_key, {})
+    current_list = list(r_cfg.get("monitored_providers", []))
+
+    if provider_name in current_list:
+        current_list.remove(provider_name)
+        status = "removed"
+    else:
+        current_list.append(provider_name)
+        status = "added"
+
+    r_cfg["monitored_providers"] = current_list
+    cfg["providers"][r_key] = r_cfg
+    save_config(cfg)
+    return True, f"Provider '{provider_name}' {status} from {r_key} monitor."
+
+
 def main():
     if len(sys.argv) > 1:
         cmd = sys.argv[1]
@@ -857,6 +987,10 @@ def main():
             return
         elif cmd == "--set-theme" and len(sys.argv) > 2:
             ok, msg = set_theme(sys.argv[2])
+            print(msg)
+            sys.exit(0 if ok else 1)
+        elif cmd == "--toggle-provider" and len(sys.argv) > 3:
+            ok, msg = toggle_router_provider(sys.argv[2], sys.argv[3])
             print(msg)
             sys.exit(0 if ok else 1)
 
