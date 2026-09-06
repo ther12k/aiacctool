@@ -72,6 +72,11 @@ class AIIndicator extends PanelMenu.Button {
         this._populateThemes();
         this.menu.addMenuItem(this._themeSubMenu);
 
+        // Settings submenu (live, no external editor needed)
+        this._settingsSubMenu = new PopupMenu.PopupSubMenuMenuItem(_('⚙️  Settings'));
+        this._populateSettings();
+        this.menu.addMenuItem(this._settingsSubMenu);
+
         // Actions
         const refreshItem = new PopupMenu.PopupMenuItem(_('🔄  Refresh Now'));
         refreshItem.connect('activate', () => {
@@ -94,12 +99,95 @@ class AIIndicator extends PanelMenu.Button {
         });
         this.menu.addMenuItem(openZaiItem);
 
-        const editConfigItem = new PopupMenu.PopupMenuItem(_('⚙️  Edit Configuration'));
+        const editConfigItem = new PopupMenu.PopupMenuItem(_('📝  Edit config.json (Text Editor)'));
         editConfigItem.connect('activate', () => {
             const cfgPath = GLib.build_filenamev([GLib.get_home_dir(), '.config', 'ai-usage-monitor', 'config.json']);
-            Util.spawnCommandLine(`xdg-open "${cfgPath}"`);
+            // xdg-open would route .json to the web browser; spawn a real editor instead
+            Util.spawnCommandLine(`gnome-text-editor "${cfgPath}" || gedit "${cfgPath}" || xdg-open "${cfgPath}"`);
         });
         this.menu.addMenuItem(editConfigItem);
+    }
+
+    _populateSettings() {
+        if (!this._settingsSubMenu)
+            return;
+        this._settingsSubMenu.menu.removeAll();
+
+        const opts = (this._lastData && this._lastData.ui_options) || {};
+
+        // Boolean switches
+        const iconSwitch = new PopupMenu.PopupSwitchMenuItem(_('Show status icon'), !!opts.show_icon);
+        iconSwitch.connect('toggled', (item, state) => {
+            this._setOption('show_icon', state);
+        });
+        this._settingsSubMenu.menu.addMenuItem(iconSwitch);
+
+        const resetSwitch = new PopupMenu.PopupSwitchMenuItem(_('Show reset countdown in top bar'), !!opts.show_reset_in_topbar);
+        resetSwitch.connect('toggled', (item, state) => {
+            this._setOption('show_reset_in_topbar', state);
+        });
+        this._settingsSubMenu.menu.addMenuItem(resetSwitch);
+
+        this._settingsSubMenu.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+
+        // Cycling options
+        const fmtItem = new PopupMenu.PopupMenuItem(`Badge format: ${opts.panel_format || 'compact'}   (click to change)`);
+        fmtItem.connect('activate', () => {
+            this._cycleOption('panel_format', ['compact', 'standard', 'full', 'minimal']);
+        });
+        this._settingsSubMenu.menu.addMenuItem(fmtItem);
+
+        const posItem = new PopupMenu.PopupMenuItem(`Panel position: ${opts.panel_position || 'center'}   (click to change)`);
+        posItem.connect('activate', () => {
+            this._cycleOption('panel_position', ['center', 'left', 'right']);
+        });
+        this._settingsSubMenu.menu.addMenuItem(posItem);
+
+        const intItem = new PopupMenu.PopupMenuItem(`Refresh every: ${opts.poll_interval_sec || 30}s   (click to change)`);
+        intItem.connect('activate', () => {
+            this._cycleOption('poll_interval_sec', ['15', '30', '60', '120']);
+        });
+        this._settingsSubMenu.menu.addMenuItem(intItem);
+    }
+
+    _setOption(key, value) {
+        try {
+            const proc = new Gio.Subprocess({
+                argv: ['python3', this._collectorScript, '--set-option', key, String(value)],
+                flags: Gio.SubprocessFlags.STDOUT_PIPE,
+            });
+            proc.init(null);
+            proc.communicate_utf8_async(null, null, (obj, res) => {
+                this._refreshData();
+            });
+        } catch (e) {
+            log(`[AI Monitor] Error setting option ${key}: ${e}`);
+        }
+    }
+
+    _cycleOption(key, values) {
+        const opts = (this._lastData && this._lastData.ui_options) || {};
+        const current = String(opts[key] !== undefined ? opts[key] : values[0]);
+        const idx = values.indexOf(current);
+        const next = values[(idx + 1) % values.length];
+        this._setOption(key, next);
+    }
+
+    _repositionIndicator() {
+        const opts = (this._lastData && this._lastData.ui_options) || {};
+        const pos = opts.panel_position || 'center';
+        const boxes = {
+            left: Main.panel._leftBox,
+            center: Main.panel._centerBox,
+            right: Main.panel._rightBox,
+        };
+        const target = boxes[pos] || Main.panel._centerBox;
+        const parent = this.container.get_parent();
+        if (parent === target)
+            return;
+        if (parent)
+            parent.remove_child(this.container);
+        target.insert_child_at_index(this.container, pos === 'center' ? 0 : 1);
     }
 
     _populateThemes() {
@@ -161,6 +249,7 @@ class AIIndicator extends PanelMenu.Button {
             GLib.source_remove(this._pollTimerId);
             this._pollTimerId = null;
         }
+        this._currentPollInterval = seconds;
         this._pollTimerId = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, seconds, () => {
             this._refreshData();
             return GLib.SOURCE_CONTINUE;
@@ -228,8 +317,18 @@ class AIIndicator extends PanelMenu.Button {
             this._icon.visible = false;
         }
 
-        // 3. Refresh Theme SubMenu choices
+        // 3. Refresh Theme & Settings SubMenu choices
         this._populateThemes();
+        this._populateSettings();
+        this._repositionIndicator();
+
+        // 3b. Restart polling if the interval changed
+        const opts = data.ui_options || {};
+        const wantedInterval = parseInt(opts.poll_interval_sec, 10) || 30;
+        if (wantedInterval !== this._currentPollInterval) {
+            this._currentPollInterval = wantedInterval;
+            this._startPolling(wantedInterval);
+        }
 
         // 4. Re-populate Menu Content Section
         this._contentSection.removeAll();

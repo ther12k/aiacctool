@@ -245,6 +245,23 @@ def cmd_providers(args):
         print(f"{GREEN if ok else RED}{msg}{RESET}")
 
 
+def cmd_option(args):
+    if args.option_cmd == "set":
+        if not args.key or not args.value:
+            print(f"{RED}Usage: aiacctool option set <key> <value>{RESET}")
+            return
+        ok, msg = ai_collector.set_option(args.key, args.value)
+        print(f"{GREEN if ok else RED}{msg}{RESET}")
+    else:
+        data = ai_collector.collect_all()
+        opts = data.get("ui_options", {})
+        print(f"\n{BOLD}{CYAN}Current UI Options:{RESET}")
+        for k, v in opts.items():
+            print(f"  {BOLD}{k:24}{RESET} = {v}")
+        print(f"\nChange with: {CYAN}aiacctool option set <key> <value>{RESET}")
+        print(f"Keys: panel_format, panel_position, show_icon, show_reset_in_topbar, poll_interval_sec, theme\n")
+
+
 def cmd_config(args):
     cfg_file = ai_collector.CONFIG_FILE
     if args.edit:
@@ -290,6 +307,14 @@ def main():
     p_router_tog = p_router_sub.add_parser("toggle", help="Toggle monitoring for a specific provider")
     p_router_tog.add_argument("name", help="Name of the provider (e.g. glm, kiro, codex, gemini, openrouter)")
 
+    # option command
+    p_opt = subparsers.add_parser("option", help="View or change UI/behavior options")
+    p_opt_sub = p_opt.add_subparsers(dest="option_cmd")
+    p_opt_sub.add_parser("list", help="List current UI options")
+    p_opt_set = p_opt_sub.add_parser("set", help="Set a UI option value")
+    p_opt_set.add_argument("key", help="Option key (panel_format, panel_position, show_icon, poll_interval_sec...)")
+    p_opt_set.add_argument("value", help="New value")
+
     # config command
     p_config = subparsers.add_parser("config", help="View or edit configuration file")
     p_config.add_argument("--edit", "-e", action="store_true", help="Open config file in $EDITOR")
@@ -306,6 +331,8 @@ def main():
         cmd_theme(args)
     elif args.command == "router":
         cmd_providers(args)
+    elif args.command == "option":
+        cmd_option(args)
 
 
 if __name__ == "__main__":
