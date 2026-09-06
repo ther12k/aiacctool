@@ -932,6 +932,13 @@ def collect_all():
         "time_str": datetime.datetime.now().strftime("%H:%M:%S"),
         "theme": theme,
         "available_themes": list(THEME_PRESETS.keys()),
+        "ui_options": {
+            "panel_format": cfg.get("panel_format", "compact"),
+            "panel_position": cfg.get("panel_position", "center"),
+            "show_icon": cfg.get("show_icon", True),
+            "show_reset_in_topbar": cfg.get("show_reset_in_topbar", True),
+            "poll_interval_sec": cfg.get("poll_interval_sec", 30),
+        },
         "glm": check_glm(cfg),
         "antigravity": check_antigravity(cfg),
         "codex": check_codex(cfg),
@@ -975,6 +982,39 @@ def toggle_router_provider(router_type, provider_name):
     return True, f"Provider '{provider_name}' {status} from {r_key} monitor."
 
 
+def set_option(key, value):
+    """
+    Sets a UI/behavior option in config.json from the menu or CLI.
+    Accepts booleans as 'true'/'false', ints as digits, everything else verbatim.
+    """
+    bool_keys = {"show_icon", "show_reset_in_topbar"}
+    int_keys = {"poll_interval_sec"}
+
+    if key not in {"theme", "panel_format", "panel_position", "poll_interval_sec",
+                   "show_reset_in_topbar", "show_icon"}:
+        return False, f"Unknown option '{key}'"
+
+    if key in bool_keys:
+        value = str(value).lower() in ("true", "1", "yes", "on")
+    elif key in int_keys:
+        try:
+            value = int(value)
+        except ValueError:
+            return False, f"'{key}' expects a number"
+
+    cfg = load_config()
+    cfg[key] = value
+    save_config(cfg)
+    return True, f"{key} = {value}"
+
+
+def toggle_provider_account(router_type, provider_name, account):
+    """
+    Not yet used; placeholder for per-account filtering.
+    """
+    return False, "Not implemented"
+
+
 def main():
     if len(sys.argv) > 1:
         cmd = sys.argv[1]
@@ -993,6 +1033,15 @@ def main():
             ok, msg = toggle_router_provider(sys.argv[2], sys.argv[3])
             print(msg)
             sys.exit(0 if ok else 1)
+        elif cmd == "--set-option" and len(sys.argv) > 3:
+            ok, msg = set_option(sys.argv[2], sys.argv[3])
+            print(msg)
+            sys.exit(0 if ok else 1)
+        elif cmd == "--get-option" and len(sys.argv) > 2:
+            cfg = load_config()
+            val = cfg.get(sys.argv[2])
+            print(json.dumps(val) if isinstance(val, (dict, list)) else val)
+            sys.exit(0 if val is not None else 1)
 
     data = collect_all()
     print(json.dumps(data, indent=2))

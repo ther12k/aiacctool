@@ -56,9 +56,11 @@ Built natively for **GNOME Shell 46+** (Ubuntu 24.04+) with companion CLI and au
   - Custom endpoint status, usage percentage, and countdowns
 - **Quick Actions**:
   - 🔄 **Refresh Now**: Instantly re-query all APIs
+  - 🎨 **Theme & Presets**: Switch themes live
+  - ⚙️ **Settings**: Toggle the status icon, reset countdown, badge format, panel position, and refresh interval — all persisted to `config.json`, no editor required
   - 🌐 **Open 9Router Dashboard**: Launch local/remote router web UI
   - ⚡ **Open Z.ai Console**: Manage API keys
-  - ⚙️ **Edit Configuration**: Open `config.json`
+  - 📝 **Edit config.json**: Opens the config in a text editor (not the browser)
 
 ---
 
@@ -105,7 +107,17 @@ aiacctool router toggle gemini-cli
 aiacctool router toggle codex
 ```
 
-### 7. View or edit configuration:
+### 7. View or change UI options (icon, badge format, position, refresh rate):
+```bash
+aiacctool option list
+aiacctool option set show_icon false
+aiacctool option set panel_format standard
+aiacctool option set panel_position right
+aiacctool option set poll_interval_sec 60
+```
+All of these are also available interactively in the top-bar menu under **⚙️ Settings** (live switches, no editor needed).
+
+### 8. View or edit configuration:
 ```bash
 aiacctool config
 aiacctool config --edit
