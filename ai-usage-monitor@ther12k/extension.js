@@ -16,6 +16,7 @@ class AIIndicator extends PanelMenu.Button {
         super._init(0.0, _('AI Usage Monitor'));
         this._extension = extension;
         this._collectorScript = GLib.build_filenamev([this._extension.path, 'ai-collector.py']);
+        this._lastData = null;
 
         // Main panel horizontal layout
         this._box = new St.BoxLayout({
@@ -66,6 +67,11 @@ class AIIndicator extends PanelMenu.Button {
 
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
+        // Theme / Appearance Submenu
+        this._themeSubMenu = new PopupMenu.PopupSubMenuMenuItem(_('🎨  Theme & Presets'));
+        this._populateThemes();
+        this.menu.addMenuItem(this._themeSubMenu);
+
         // Actions
         const refreshItem = new PopupMenu.PopupMenuItem(_('🔄  Refresh Now'));
         refreshItem.connect('activate', () => {
@@ -94,6 +100,45 @@ class AIIndicator extends PanelMenu.Button {
             Util.spawnCommandLine(`xdg-open "${cfgPath}"`);
         });
         this.menu.addMenuItem(editConfigItem);
+    }
+
+    _populateThemes() {
+        this._themeSubMenu.menu.removeAll();
+        const themes = [
+            { id: 'default', name: 'Default Cyber (Blue)' },
+            { id: 'catppuccin', name: 'Catppuccin Mocha (Mauve)' },
+            { id: 'nord', name: 'Nord Frost (Cyan)' },
+            { id: 'dracula', name: 'Dracula Vampire (Purple)' },
+            { id: 'cyberpunk', name: 'Cyberpunk Neon (Glow)' },
+            { id: 'monochrome', name: 'Minimal Monochrome (Clean)' },
+        ];
+
+        const currentThemeId = (this._lastData && this._lastData.theme) ? this._lastData.theme.theme_id : 'default';
+
+        for (const t of themes) {
+            const isSelected = t.id === currentThemeId;
+            const prefix = isSelected ? '● ' : '○ ';
+            const item = new PopupMenu.PopupMenuItem(`${prefix}${t.name}`);
+            item.connect('activate', () => {
+                this._setTheme(t.id);
+            });
+            this._themeSubMenu.menu.addMenuItem(item);
+        }
+    }
+
+    _setTheme(themeId) {
+        try {
+            const proc = new Gio.Subprocess({
+                argv: ['python3', this._collectorScript, '--set-theme', themeId],
+                flags: Gio.SubprocessFlags.STDOUT_PIPE,
+            });
+            proc.init(null);
+            proc.communicate_utf8_async(null, null, (obj, res) => {
+                this._refreshData();
+            });
+        } catch (e) {
+            log(`[AI Monitor] Error switching theme: ${e}`);
+        }
     }
 
     _startPolling(seconds) {
@@ -135,25 +180,49 @@ class AIIndicator extends PanelMenu.Button {
 
     _updateUI(data) {
         this._lastData = data;
-        // 1. Update Top Bar Label & Icon
+        const theme = data.theme || {};
         const summary = data.summary || {};
+
+        // 1. Update Top Bar Label & Style
         this._label.text = summary.text || _('AI Monitor');
 
-        if (summary.has_warning) {
-            this._icon.icon_name = 'dialog-warning-symbolic';
-        } else if (summary.has_ok) {
-            this._icon.icon_name = 'emblem-default-symbolic';
+        // Apply theme font, size, weight, and color
+        let styleStr = '';
+        if (theme.topbar_color) {
+            styleStr += `color: ${theme.topbar_color}; `;
+        }
+        if (theme.topbar_font_weight) {
+            styleStr += `font-weight: ${theme.topbar_font_weight}; `;
+        }
+        if (theme.topbar_font_size) {
+            styleStr += `font-size: ${theme.topbar_font_size}; `;
+        }
+        if (theme.topbar_font_family) {
+            styleStr += `font-family: ${theme.topbar_font_family}; `;
+        }
+        this._label.set_style(styleStr);
+
+        // 2. Update Icon & Visibility
+        if (summary.show_icon !== false) {
+            this._icon.visible = true;
+            this._icon.icon_name = summary.icon || 'emblem-default-symbolic';
+            if (theme.topbar_color) {
+                this._icon.set_style(`color: ${theme.topbar_color};`);
+            }
         } else {
-            this._icon.icon_name = 'network-offline-symbolic';
+            this._icon.visible = false;
         }
 
-        // 2. Re-populate Menu Section
+        // 3. Refresh Theme SubMenu choices
+        this._populateThemes();
+
+        // 4. Re-populate Menu Content Section
         this._contentSection.removeAll();
 
         // Subtitle / Last updated
         if (data.time_str) {
             const timeItem = new PopupMenu.PopupMenuItem(
-                `Last sync: ${data.time_str}`,
+                `Theme: ${theme.name || 'Default'} · Last sync: ${data.time_str}`,
                 { reactive: false, style_class: 'ai-monitor-val-muted' }
             );
             this._contentSection.addMenuItem(timeItem);
@@ -167,6 +236,9 @@ class AIIndicator extends PanelMenu.Button {
                 reactive: false,
                 style_class: 'ai-monitor-section-title',
             });
+            if (theme.menu_section_color) {
+                title.label.set_style(`color: ${theme.menu_section_color};`);
+            }
             this._contentSection.addMenuItem(title);
 
             if (glm.status === 'ok') {
@@ -206,6 +278,9 @@ class AIIndicator extends PanelMenu.Button {
                 reactive: false,
                 style_class: 'ai-monitor-section-title',
             });
+            if (theme.menu_section_color) {
+                title.label.set_style(`color: ${theme.menu_section_color};`);
+            }
             this._contentSection.addMenuItem(title);
 
             if (ag.status === 'ok') {
@@ -266,6 +341,9 @@ class AIIndicator extends PanelMenu.Button {
                 reactive: false,
                 style_class: 'ai-monitor-section-title',
             });
+            if (theme.menu_section_color) {
+                title.label.set_style(`color: ${theme.menu_section_color};`);
+            }
             this._contentSection.addMenuItem(title);
 
             if (codex.status === 'ok') {
@@ -308,6 +386,9 @@ class AIIndicator extends PanelMenu.Button {
                 reactive: false,
                 style_class: 'ai-monitor-section-title',
             });
+            if (theme.menu_section_color) {
+                title.label.set_style(`color: ${theme.menu_section_color};`);
+            }
             this._contentSection.addMenuItem(title);
 
             const srvText = r9.remote_running ? 'Remote: Online' : (r9.local_running ? 'Local: Online' : 'Offline');
@@ -332,6 +413,9 @@ class AIIndicator extends PanelMenu.Button {
                 reactive: false,
                 style_class: 'ai-monitor-section-title',
             });
+            if (theme.menu_section_color) {
+                title.label.set_style(`color: ${theme.menu_section_color};`);
+            }
             this._contentSection.addMenuItem(title);
 
             const omStatus = om.status === 'ok' ? `Connected (${om.models_count} models)` : 'Offline (port 20128)';

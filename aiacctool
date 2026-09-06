@@ -192,6 +192,27 @@ def cmd_status(args):
     print(f"{BOLD}Top Bar Badge:{RESET} {data.get('summary', {}).get('text')}\n")
 
 
+def cmd_theme(args):
+    presets = ai_collector.THEME_PRESETS
+    if args.theme_cmd == "list" or not args.theme_cmd:
+        cfg = ai_collector.load_config()
+        cur = cfg.get("theme", "default")
+        print(f"\n{BOLD}{CYAN}Available Themes:{RESET}")
+        for t_id, t_info in presets.items():
+            mark = f"{GREEN}● (active){RESET}" if t_id == cur else f"{DIM}○{RESET}"
+            print(f"  {mark} {BOLD}{t_id:12}{RESET} - {t_info['name']} (Color: {t_info['topbar_color']})")
+        print(f"\nTo switch: {CYAN}aiacctool theme set <name>{RESET}\n")
+    elif args.theme_cmd == "set":
+        if not args.name:
+            print(f"{RED}Please specify a theme name. Run 'aiacctool theme list' to view available themes.{RESET}")
+            return
+        ok, msg = ai_collector.set_theme(args.name)
+        if ok:
+            print(f"{GREEN}✔ {msg}{RESET}")
+        else:
+            print(f"{RED}✖ {msg}{RESET}")
+
+
 def cmd_config(args):
     cfg_file = ai_collector.CONFIG_FILE
     if args.edit:
@@ -223,6 +244,13 @@ def main():
     # topbar command
     subparsers.add_parser("topbar", help="Print single-line summary badge for top bar / status line")
 
+    # theme command
+    p_theme = subparsers.add_parser("theme", help="List or change visual themes and color schemes")
+    p_theme_sub = p_theme.add_subparsers(dest="theme_cmd")
+    p_theme_sub.add_parser("list", help="List available themes")
+    p_theme_set = p_theme_sub.add_parser("set", help="Set active theme")
+    p_theme_set.add_argument("name", help="Name of theme (catppuccin, nord, dracula, cyberpunk, monochrome, default)")
+
     # config command
     p_config = subparsers.add_parser("config", help="View or edit configuration file")
     p_config.add_argument("--edit", "-e", action="store_true", help="Open config file in $EDITOR")
@@ -235,6 +263,8 @@ def main():
         cmd_topbar(args)
     elif args.command == "config":
         cmd_config(args)
+    elif args.command == "theme":
+        cmd_theme(args)
 
 
 if __name__ == "__main__":

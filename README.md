@@ -18,6 +18,8 @@ Built natively for **GNOME Shell 46+** (Ubuntu 24.04+) with companion CLI and au
   - **9Router**: Monitors local/remote router activity, today's request count, and token volume.
   - **OmniRoute**: Monitors local or remote OmniRoute server health and active model pool.
   - **Custom APIs & OpenRouter**: Easily configure custom API endpoints with token authentication and JSON response path extraction.
+- **Themes & Custom Appearance**: Choose from 6 curated themes (**Catppuccin Mocha**, **Nord Frost**, **Dracula Vampire**, **Cyberpunk Neon**, **Minimal Monochrome**, and **Default Cyber**) or customize colors, fonts, and icons directly.
+- **Theme Switcher**: Switch themes on the fly via the top-bar dropdown menu or the CLI (`aiacctool theme set catppuccin`).
 - **Zero-Config Auto Discovery**: Automatically reads existing credentials from `~/.claude/settings.json`, `~/.codex/auth.json`, `~/.9router/db/data.sqlite`, and local process sockets.
 
 ---
@@ -84,7 +86,14 @@ aiacctool topbar
 aiacctool status --json
 ```
 
-### 5. View or edit configuration:
+### 5. Switch visual themes:
+```bash
+aiacctool theme list
+aiacctool theme set catppuccin
+# Available: default, catppuccin, nord, dracula, cyberpunk, monochrome
+```
+
+### 6. View or edit configuration:
 ```bash
 aiacctool config
 aiacctool config --edit
@@ -98,9 +107,21 @@ The configuration file is automatically created at `~/.config/ai-usage-monitor/c
 
 ```json
 {
+  "theme": "default",
   "poll_interval_sec": 30,
   "panel_format": "compact",
   "show_reset_in_topbar": true,
+  "show_icon": true,
+  "appearance": {
+    "topbar_color": "",
+    "topbar_font_size": "12px",
+    "topbar_font_weight": "600",
+    "topbar_font_family": "",
+    "custom_badge_icons": {
+      "glm": "⚡",
+      "antigravity": "🌌"
+    }
+  },
   "providers": {
     "glm": {
       "enabled": true,

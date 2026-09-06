@@ -50,8 +50,7 @@
     font-size: 11px;
 }
 
-.ai-monitor-reset-badge {
-    color: #78a9ff;
-    font-size: 11px;
-    margin-left: 6px;
+.ai-monitor-theme-active {
+    font-weight: bold;
+    color: #8ab4f8;
 }

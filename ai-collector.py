@@ -8,6 +8,9 @@ Collects real-time usage, limits, and reset countdowns for:
 - 9Router (Local SQLite DB + local/remote dashboard API)
 - OmniRoute (Local/remote gateway)
 - OpenRouter / Custom APIs
+
+Includes rich theming system (Catppuccin, Nord, Dracula, Cyberpunk, Monochrome, Default)
+and custom fonts, colors, and icons.
 """
 
 import os
@@ -25,10 +28,172 @@ from pathlib import Path
 CONFIG_DIR = Path.home() / ".config" / "ai-usage-monitor"
 CONFIG_FILE = CONFIG_DIR / "config.json"
 
+THEME_PRESETS = {
+    "default": {
+        "name": "Default Cyber",
+        "topbar_color": "#8ab4f8",
+        "topbar_font_weight": "600",
+        "topbar_font_size": "12px",
+        "topbar_font_family": "",
+        "icon_ok": "emblem-default-symbolic",
+        "icon_warn": "dialog-warning-symbolic",
+        "icon_err": "network-offline-symbolic",
+        "menu_header_color": "#8ab4f8",
+        "menu_section_color": "#e8eaed",
+        "menu_ok_color": "#81c995",
+        "menu_warn_color": "#fdd663",
+        "menu_err_color": "#f28b82",
+        "menu_muted_color": "#9aa0a6",
+        "badge_icons": {
+            "glm": "⚡",
+            "antigravity": "🌌",
+            "codex": "🤖",
+            "nine_router": "🔀",
+            "omniroute": "🔄",
+            "custom": "📡",
+            "reset": "⏳"
+        }
+    },
+    "catppuccin": {
+        "name": "Catppuccin Mocha",
+        "topbar_color": "#cba6f7",       # Mauve
+        "topbar_font_weight": "bold",
+        "topbar_font_size": "12px",
+        "topbar_font_family": "",
+        "icon_ok": "weather-clear-symbolic",
+        "icon_warn": "weather-few-clouds-symbolic",
+        "icon_err": "weather-storm-symbolic",
+        "menu_header_color": "#cba6f7",
+        "menu_section_color": "#89b4fa",  # Blue
+        "menu_ok_color": "#a6e3a1",       # Green
+        "menu_warn_color": "#f9e2af",     # Yellow
+        "menu_err_color": "#f38ba8",      # Red
+        "menu_muted_color": "#9399b2",
+        "badge_icons": {
+            "glm": "⚡",
+            "antigravity": "🌸",
+            "codex": "🐱",
+            "nine_router": "🔀",
+            "omniroute": "🔄",
+            "custom": "📡",
+            "reset": "⏱"
+        }
+    },
+    "nord": {
+        "name": "Nord Frost",
+        "topbar_color": "#88c0d0",       # Frost Cyan
+        "topbar_font_weight": "600",
+        "topbar_font_size": "12px",
+        "topbar_font_family": "",
+        "icon_ok": "starred-symbolic",
+        "icon_warn": "dialog-warning-symbolic",
+        "icon_err": "process-stop-symbolic",
+        "menu_header_color": "#88c0d0",
+        "menu_section_color": "#81a1c1",
+        "menu_ok_color": "#a3be8c",       # Aurora Green
+        "menu_warn_color": "#ebcb8b",     # Aurora Yellow
+        "menu_err_color": "#bf616a",      # Aurora Red
+        "menu_muted_color": "#d8dee9",
+        "badge_icons": {
+            "glm": "❄️",
+            "antigravity": "🧊",
+            "codex": "🤖",
+            "nine_router": "⇄",
+            "omniroute": "🔄",
+            "custom": "📡",
+            "reset": "⏳"
+        }
+    },
+    "dracula": {
+        "name": "Dracula Vampire",
+        "topbar_color": "#bd93f9",       # Purple
+        "topbar_font_weight": "bold",
+        "topbar_font_size": "12px",
+        "topbar_font_family": "",
+        "icon_ok": "security-high-symbolic",
+        "icon_warn": "dialog-warning-symbolic",
+        "icon_err": "dialog-error-symbolic",
+        "menu_header_color": "#ff79c6",   # Pink
+        "menu_section_color": "#bd93f9",  # Purple
+        "menu_ok_color": "#50fa7b",       # Green
+        "menu_warn_color": "#f1fa8c",     # Yellow
+        "menu_err_color": "#ff5555",      # Red
+        "menu_muted_color": "#6272a4",    # Comment
+        "badge_icons": {
+            "glm": "⚡",
+            "antigravity": "🦇",
+            "codex": "💀",
+            "nine_router": "🩸",
+            "omniroute": "🔄",
+            "custom": "📡",
+            "reset": "⌛"
+        }
+    },
+    "cyberpunk": {
+        "name": "Cyberpunk Neon",
+        "topbar_color": "#00ffcc",       # Neon Cyan
+        "topbar_font_weight": "bold",
+        "topbar_font_size": "12px",
+        "topbar_font_family": "",
+        "icon_ok": "software-update-available-symbolic",
+        "icon_warn": "dialog-warning-symbolic",
+        "icon_err": "process-stop-symbolic",
+        "menu_header_color": "#ff007f",   # Neon Pink
+        "menu_section_color": "#00ffcc",  # Neon Cyan
+        "menu_ok_color": "#39ff14",       # Neon Green
+        "menu_warn_color": "#ffe600",     # Neon Yellow
+        "menu_err_color": "#ff073a",      # Neon Red
+        "menu_muted_color": "#708090",
+        "badge_icons": {
+            "glm": "⚡",
+            "antigravity": "🪐",
+            "codex": "👾",
+            "nine_router": "🔀",
+            "omniroute": "🔄",
+            "custom": "📡",
+            "reset": "⏳"
+        }
+    },
+    "monochrome": {
+        "name": "Minimal Monochrome",
+        "topbar_color": "#ffffff",
+        "topbar_font_weight": "normal",
+        "topbar_font_size": "11px",
+        "topbar_font_family": "monospace",
+        "icon_ok": "radio-checked-symbolic",
+        "icon_warn": "dialog-warning-symbolic",
+        "icon_err": "dialog-error-symbolic",
+        "menu_header_color": "#ffffff",
+        "menu_section_color": "#cccccc",
+        "menu_ok_color": "#ffffff",
+        "menu_warn_color": "#dddddd",
+        "menu_err_color": "#888888",
+        "menu_muted_color": "#777777",
+        "badge_icons": {
+            "glm": "[GLM]",
+            "antigravity": "[AG]",
+            "codex": "[CDX]",
+            "nine_router": "[R9]",
+            "omniroute": "[OMN]",
+            "custom": "[API]",
+            "reset": "->"
+        }
+    }
+}
+
 DEFAULT_CONFIG = {
+    "theme": "default",
     "poll_interval_sec": 30,
     "panel_format": "compact",  # "compact", "standard", "full", "minimal"
     "show_reset_in_topbar": True,
+    "show_icon": True,
+    "appearance": {
+        "topbar_color": "",
+        "topbar_font_size": "",
+        "topbar_font_weight": "",
+        "topbar_font_family": "",
+        "custom_badge_icons": {}
+    },
     "providers": {
         "glm": {
             "enabled": True,
@@ -38,12 +203,12 @@ DEFAULT_CONFIG = {
         },
         "antigravity": {
             "enabled": True,
-            "port": 0,  # 0 = auto-detect listening agy port
+            "port": 0,
             "auto_detect": True
         },
         "codex": {
             "enabled": True,
-            "auth_file": "",  # empty = ~/.codex/auth.json
+            "auth_file": "",
             "auto_detect": True
         },
         "nine_router": {
@@ -85,11 +250,10 @@ def load_config():
     try:
         with open(CONFIG_FILE, "r") as f:
             cfg = json.load(f)
-            # Ensure top-level default keys exist
+            # Ensure default keys
             for k, v in DEFAULT_CONFIG.items():
                 if k not in cfg:
                     cfg[k] = v
-            # Ensure providers structure
             if "providers" not in cfg:
                 cfg["providers"] = DEFAULT_CONFIG["providers"]
             else:
@@ -99,6 +263,37 @@ def load_config():
             return cfg
     except Exception:
         return DEFAULT_CONFIG
+
+
+def save_config(cfg):
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    with open(CONFIG_FILE, "w") as f:
+        json.dump(cfg, f, indent=2)
+
+
+def get_active_theme(cfg):
+    theme_name = cfg.get("theme", "default")
+    base_theme = THEME_PRESETS.get(theme_name, THEME_PRESETS["default"]).copy()
+
+    # Apply user overrides from appearance
+    app = cfg.get("appearance", {})
+    if app.get("topbar_color"):
+        base_theme["topbar_color"] = app["topbar_color"]
+    if app.get("topbar_font_size"):
+        base_theme["topbar_font_size"] = app["topbar_font_size"]
+    if app.get("topbar_font_weight"):
+        base_theme["topbar_font_weight"] = app["topbar_font_weight"]
+    if app.get("topbar_font_family"):
+        base_theme["topbar_font_family"] = app["topbar_font_family"]
+
+    custom_badges = app.get("custom_badge_icons", {})
+    if custom_badges:
+        merged_badges = base_theme.get("badge_icons", {}).copy()
+        merged_badges.update(custom_badges)
+        base_theme["badge_icons"] = merged_badges
+
+    base_theme["theme_id"] = theme_name
+    return base_theme
 
 
 def make_ascii_bar(pct, length=10):
@@ -532,12 +727,19 @@ def check_custom_apis(cfg):
     return results
 
 
-def generate_panel_summary(results, cfg):
+def generate_panel_summary(results, cfg, theme):
     """
-    Generates a concise label and status icon for the GNOME top bar.
+    Generates a concise label and status icon for the GNOME top bar, styled according to the active theme.
     """
     p_format = cfg.get("panel_format", "compact")
     show_reset = cfg.get("show_reset_in_topbar", True)
+    badges = theme.get("badge_icons", {})
+
+    b_glm = badges.get("glm", "⚡")
+    b_ag = badges.get("antigravity", "🌌")
+    b_codex = badges.get("codex", "🤖")
+    b_router = badges.get("nine_router", "🔀")
+    b_rst = badges.get("reset", "⏳")
 
     parts = []
     has_warning = False
@@ -554,7 +756,7 @@ def generate_panel_summary(results, cfg):
             if used >= 90:
                 has_warning = True
             if p_format == "compact":
-                parts.append(f"⚡{used}%" + (f"({cd})" if (used >= 90 and cd) else ""))
+                parts.append(f"{b_glm}{used}%" + (f"({cd})" if (used >= 90 and cd) else ""))
             elif p_format == "standard":
                 parts.append(f"GLM {used}%" + (f" ({cd})" if (used >= 90 and cd) else ""))
             elif p_format == "full":
@@ -571,12 +773,12 @@ def generate_panel_summary(results, cfg):
             if rem <= 20:
                 has_warning = True
             if p_format == "compact":
-                ag_str = f"🌌{rem:.0f}%"
+                ag_str = f"{b_ag}{rem:.0f}%"
                 if show_reset and cd:
-                    ag_str += f"⏳{cd}"
+                    ag_str += f"{b_rst}{cd}"
                 parts.append(ag_str)
             elif p_format == "standard":
-                parts.append(f"AG {rem:.0f}%" + (f" ⏳{cd}" if (show_reset and cd) else ""))
+                parts.append(f"AG {rem:.0f}%" + (f" {b_rst}{cd}" if (show_reset and cd) else ""))
             elif p_format == "full":
                 parts.append(f"AG: {rem:.0f}% left")
 
@@ -588,7 +790,7 @@ def generate_panel_summary(results, cfg):
             p = codex.get("primary_window", {})
             u = p.get("used_pct")
             if u is not None:
-                parts.append(f"🤖{u}%" if p_format == "compact" else f"Codex {u}%")
+                parts.append(f"{b_codex}{u}%" if p_format == "compact" else f"Codex {u}%")
         elif codex.get("status") == "payment_required":
             if p_format == "full":
                 parts.append("Codex: Plan Inactive")
@@ -599,11 +801,14 @@ def generate_panel_summary(results, cfg):
         has_ok = True
 
     badge_text = "  ".join(parts) if parts else ("AI Monitor" if has_ok else "AI Offline")
-    icon = "dialog-warning-symbolic" if has_warning else ("emblem-default-symbolic" if has_ok else "network-offline-symbolic")
+
+    # Determine icon name based on theme and health
+    icon = theme.get("icon_warn") if has_warning else (theme.get("icon_ok") if has_ok else theme.get("icon_err"))
 
     return {
         "text": badge_text,
         "icon": icon,
+        "show_icon": cfg.get("show_icon", True),
         "has_warning": has_warning,
         "has_ok": has_ok
     }
@@ -611,9 +816,12 @@ def generate_panel_summary(results, cfg):
 
 def collect_all():
     cfg = load_config()
+    theme = get_active_theme(cfg)
     data = {
         "timestamp": int(time.time()),
         "time_str": datetime.datetime.now().strftime("%H:%M:%S"),
+        "theme": theme,
+        "available_themes": list(THEME_PRESETS.keys()),
         "glm": check_glm(cfg),
         "antigravity": check_antigravity(cfg),
         "codex": check_codex(cfg),
@@ -622,8 +830,17 @@ def collect_all():
         "openrouter": check_openrouter(cfg),
         "custom_apis": check_custom_apis(cfg)
     }
-    data["summary"] = generate_panel_summary(data, cfg)
+    data["summary"] = generate_panel_summary(data, cfg, theme)
     return data
+
+
+def set_theme(theme_name):
+    if theme_name not in THEME_PRESETS:
+        return False, f"Unknown theme '{theme_name}'. Available: {', '.join(THEME_PRESETS.keys())}"
+    cfg = load_config()
+    cfg["theme"] = theme_name
+    save_config(cfg)
+    return True, f"Theme set to '{theme_name}' ({THEME_PRESETS[theme_name]['name']})"
 
 
 def main():
@@ -633,10 +850,13 @@ def main():
             print(json.dumps(load_config(), indent=2))
             return
         elif cmd == "--summary":
-            cfg = load_config()
             d = collect_all()
             print(d["summary"]["text"])
             return
+        elif cmd == "--set-theme" and len(sys.argv) > 2:
+            ok, msg = set_theme(sys.argv[2])
+            print(msg)
+            sys.exit(0 if ok else 1)
 
     data = collect_all()
     print(json.dumps(data, indent=2))
