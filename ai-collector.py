@@ -184,6 +184,7 @@ THEME_PRESETS = {
 DEFAULT_CONFIG = {
     "theme": "default",
     "poll_interval_sec": 30,
+    "panel_position": "center",  # "center" (next to clock), "left", "right"
     "panel_format": "compact",  # "compact", "standard", "full", "minimal"
     "show_reset_in_topbar": True,
     "show_icon": True,
@@ -809,6 +810,7 @@ def generate_panel_summary(results, cfg, theme):
         "text": badge_text,
         "icon": icon,
         "show_icon": cfg.get("show_icon", True),
+        "panel_position": cfg.get("panel_position", "center"),
         "has_warning": has_warning,
         "has_ok": has_ok
     }

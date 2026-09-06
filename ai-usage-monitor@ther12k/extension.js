@@ -20,7 +20,7 @@ class AIIndicator extends PanelMenu.Button {
 
         // Main panel horizontal layout
         this._box = new St.BoxLayout({
-            style_class: 'ai-monitor-panel-box',
+            style_class: 'ai-monitor-panel-box panel-button',
             reactive: true,
             can_focus: true,
             track_hover: true,
@@ -469,7 +469,7 @@ class AIIndicator extends PanelMenu.Button {
 export default class AIUsageMonitorExtension extends Extension {
     enable() {
         this._indicator = new AIIndicator(this);
-        Main.panel.addToStatusArea(this.uuid, this._indicator, 1, 'right');
+        Main.panel.addToStatusArea(this.uuid, this._indicator, 0, 'center');
     }
 
     disable() {

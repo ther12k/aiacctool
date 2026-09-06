@@ -1,9 +1,10 @@
 .ai-monitor-panel-box {
-    spacing: 6px;
+    spacing: 5px;
+    padding: 0 4px;
 }
 
 .ai-monitor-icon {
-    icon-size: 16px;
+    icon-size: 15px;
 }
 
 .ai-monitor-label {
