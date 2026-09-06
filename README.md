@@ -93,7 +93,19 @@ aiacctool theme set catppuccin
 # Available: default, catppuccin, nord, dracula, cyberpunk, monochrome
 ```
 
-### 6. View or edit configuration:
+### 6. Choose & Filter 9Router / OmniRoute Providers:
+```bash
+# List all upstream providers in 9Router with active connection count
+aiacctool router list
+
+# Toggle monitoring for any provider on/off
+aiacctool router toggle glm
+aiacctool router toggle kiro
+aiacctool router toggle gemini-cli
+aiacctool router toggle codex
+```
+
+### 7. View or edit configuration:
 ```bash
 aiacctool config
 aiacctool config --edit
@@ -143,7 +155,8 @@ The configuration file is automatically created at `~/.config/ai-usage-monitor/c
       "enabled": true,
       "base_url": "http://localhost:20128",
       "remote_url": "",
-      "auto_detect": true
+      "auto_detect": true,
+      "monitored_providers": ["glm", "kiro", "gemini-cli", "openai-compatible", "codex"]
     },
     "omniroute": {
       "enabled": true,

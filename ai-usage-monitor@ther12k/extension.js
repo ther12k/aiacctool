@@ -141,6 +141,21 @@ class AIIndicator extends PanelMenu.Button {
         }
     }
 
+    _toggleProvider(routerType, providerName) {
+        try {
+            const proc = new Gio.Subprocess({
+                argv: ['python3', this._collectorScript, '--toggle-provider', routerType, providerName],
+                flags: Gio.SubprocessFlags.STDOUT_PIPE,
+            });
+            proc.init(null);
+            proc.communicate_utf8_async(null, null, (obj, res) => {
+                this._refreshData();
+            });
+        } catch (e) {
+            log(`[AI Monitor] Error toggling provider: ${e}`);
+        }
+    }
+
     _startPolling(seconds) {
         if (this._pollTimerId) {
             GLib.source_remove(this._pollTimerId);
@@ -403,6 +418,39 @@ class AIIndicator extends PanelMenu.Button {
                 { reactive: false, style_class: 'ai-monitor-item' }
             );
             this._contentSection.addMenuItem(usageItem);
+
+            // Display monitored providers
+            const filtered = r9.filtered_providers || {};
+            for (const [pName, pInfo] of Object.entries(filtered)) {
+                const act = pInfo.active_count || 0;
+                const tot = pInfo.count || 0;
+                const accStr = (pInfo.accounts && pInfo.accounts.length > 0)
+                    ? ` (${pInfo.accounts.slice(0, 2).join(', ')})`
+                    : '';
+                const pStatusColor = act > 0 ? 'ai-monitor-val-ok' : 'ai-monitor-val-err';
+                const pItem = new PopupMenu.PopupMenuItem(
+                    `  • ${pName}: ${act}/${tot} active${accStr}`,
+                    { reactive: false, style_class: 'ai-monitor-item' }
+                );
+                this._contentSection.addMenuItem(pItem);
+            }
+
+            // Submenu to pick / choose providers to monitor
+            const allP = r9.all_providers || {};
+            if (Object.keys(allP).length > 0) {
+                const provSubMenu = new PopupMenu.PopupSubMenuMenuItem(_('  ⚙️  Choose Providers to Monitor'));
+                for (const [pName, pInfo] of Object.entries(allP)) {
+                    const isMonitored = Boolean(filtered[pName]);
+                    const mark = isMonitored ? '☑ ' : '☐ ';
+                    const mItem = new PopupMenu.PopupMenuItem(`${mark}${pName} (${pInfo.active_count}/${pInfo.count})`);
+                    mItem.connect('activate', () => {
+                        this._toggleProvider('9router', pName);
+                    });
+                    provSubMenu.menu.addMenuItem(mItem);
+                }
+                this._contentSection.addMenuItem(provSubMenu);
+            }
+
             this._contentSection.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
         }
 
@@ -424,6 +472,17 @@ class AIIndicator extends PanelMenu.Button {
                 { reactive: false, style_class: 'ai-monitor-item' }
             );
             this._contentSection.addMenuItem(omItem);
+
+            // Display monitored providers for OmniRoute
+            const omFiltered = om.filtered_providers || {};
+            for (const [pName, count] of Object.entries(omFiltered)) {
+                const pItem = new PopupMenu.PopupMenuItem(
+                    `  • ${pName}: ${count} models`,
+                    { reactive: false, style_class: 'ai-monitor-item' }
+                );
+                this._contentSection.addMenuItem(pItem);
+            }
+
             this._contentSection.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
         }
 
