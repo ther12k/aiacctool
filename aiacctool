@@ -1,0 +1,241 @@
+#!/usr/bin/env python3
+"""
+aiacctool CLI
+Query, monitor, and manage AI account limits, quotas, and routers from the terminal.
+Supports GLM, Google Antigravity, OpenAI Codex, 9Router, OmniRoute, and Custom APIs.
+"""
+
+import os
+import sys
+import json
+import argparse
+import subprocess
+from pathlib import Path
+
+# Add script directory to sys.path
+SCRIPT_DIR = Path(__file__).resolve().parent
+sys.path.insert(0, str(SCRIPT_DIR))
+
+try:
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("ai_collector", str(SCRIPT_DIR / "ai-collector.py"))
+    ai_collector = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(ai_collector)
+except Exception as e:
+    print(f"Error loading collector module: {e}")
+    sys.exit(1)
+
+# Terminal ANSI Color codes
+BOLD = "\033[1m"
+GREEN = "\033[32m"
+YELLOW = "\033[33m"
+RED = "\033[31m"
+CYAN = "\033[36m"
+BLUE = "\033[34m"
+MAGENTA = "\033[35m"
+DIM = "\033[2m"
+RESET = "\033[0m"
+
+
+def print_header(title):
+    print(f"\n{BOLD}{CYAN}=== {title} ==={RESET}")
+
+
+def colorize_pct(pct, is_remaining=False):
+    if pct is None:
+        return f"{DIM}N/A{RESET}"
+    try:
+        val = float(pct)
+        # For remaining: higher is greener. For used: lower is greener.
+        if is_remaining:
+            if val > 50:
+                color = GREEN
+            elif val > 20:
+                color = YELLOW
+            else:
+                color = RED
+        else:
+            if val < 60:
+                color = GREEN
+            elif val < 85:
+                color = YELLOW
+            else:
+                color = RED
+        return f"{color}{val:.1f}%{RESET}"
+    except Exception:
+        return str(pct)
+
+
+def cmd_status(args):
+    data = ai_collector.collect_all()
+
+    if args.json:
+        print(json.dumps(data, indent=2))
+        return
+
+    print(f"{BOLD}{MAGENTA}🤖 AI Account & Limit Monitor{RESET}  {DIM}(Updated: {data.get('time_str')}){RESET}")
+    print(f"{DIM}{'─' * 65}{RESET}")
+
+    # 1. GLM
+    glm = data.get("glm", {})
+    if glm.get("enabled"):
+        print_header("⚡ GLM (Z.ai / BigModel)")
+        if glm.get("status") == "ok":
+            tok = glm.get("token_quota", {})
+            used_pct = tok.get("used_pct")
+            rem_pct = tok.get("remaining_pct")
+            bar = tok.get("bar", "")
+            cd = tok.get("countdown")
+            rst_t = tok.get("reset_time")
+            rst_info = f" · Reset: {cd} ({rst_t})" if cd else ""
+            print(f"  • Tokens:       {colorize_pct(used_pct)} used [{GREEN}{bar}{RESET}]{rst_info}")
+
+            tool = glm.get("tool_quota", {})
+            if tool.get("remaining") is not None:
+                t_used = tool.get("current", 0)
+                t_rem = tool.get("remaining", 0)
+                t_cd = tool.get("countdown")
+                t_rst_t = tool.get("reset_time")
+                t_info = f" · Reset: {t_cd} ({t_rst_t})" if t_cd else ""
+                print(f"  • Web Search:   {t_used} used / {GREEN}{t_rem} remaining{RESET}{t_info}")
+            print(f"  • Plan Level:   {CYAN}{glm.get('level', 'Standard')}{RESET}")
+        else:
+            print(f"  • Status:       {RED}{glm.get('error') or glm.get('status')}{RESET}")
+
+    # 2. Google Antigravity
+    ag = data.get("antigravity", {})
+    if ag.get("enabled"):
+        print_header("🌌 Google Antigravity (Local agy daemon)")
+        if ag.get("status") == "ok":
+            sonnet = ag.get("claude_sonnet", {})
+            s_rem = sonnet.get("remaining_pct")
+            s_bar = sonnet.get("bar", "")
+            s_cd = sonnet.get("countdown")
+            s_rst = sonnet.get("reset_time")
+            s_info = f" · Reset: {s_cd} ({s_rst})" if s_cd else ""
+            print(f"  • Claude Sonnet: {colorize_pct(s_rem, is_remaining=True)} left [{GREEN}{s_bar}{RESET}]{s_info}")
+
+            gemini = ag.get("gemini", {})
+            g_rem = gemini.get("remaining_pct")
+            g_bar = gemini.get("bar", "")
+            g_cd = gemini.get("countdown")
+            g_rst = gemini.get("reset_time")
+            g_info = f" · Reset: {g_cd} ({g_rst})" if g_cd else ""
+            print(f"  • Gemini 3.8:    {colorize_pct(g_rem, is_remaining=True)} left [{GREEN}{g_bar}{RESET}]{g_info}")
+            print(f"  • Local Server:  {GREEN}127.0.0.1:{ag.get('port')}{RESET} ({ag.get('models_count')} active models)")
+
+            if args.all_models:
+                print(f"\n  {BOLD}All Available Models Quota:{RESET}")
+                for m_id, m_val in sorted(ag.get("models", {}).items()):
+                    m_rem = m_val.get("remaining_pct")
+                    m_cd = m_val.get("countdown")
+                    cd_str = f" ({m_cd})" if m_cd and m_cd != "Ready" else ""
+                    print(f"    - {m_id:30} : {colorize_pct(m_rem, is_remaining=True)} left{cd_str}")
+        else:
+            print(f"  • Status:        {DIM}{ag.get('error') or 'Offline'}{RESET}")
+
+    # 3. Codex
+    codex = data.get("codex", {})
+    if codex.get("enabled"):
+        print_header("🤖 OpenAI Codex")
+        if codex.get("status") == "ok":
+            p = codex.get("primary_window", {})
+            p_used = p.get("used_pct")
+            p_bar = p.get("bar", "")
+            p_cd = p.get("countdown")
+            p_info = f" · Reset: {p_cd}" if p_cd else ""
+            print(f"  • 5-Hour Limit: {colorize_pct(p_used)} used [{GREEN}{p_bar}{RESET}]{p_info}")
+
+            s = codex.get("secondary_window", {})
+            s_used = s.get("used_pct")
+            s_bar = s.get("bar", "")
+            s_cd = s.get("countdown")
+            s_info = f" · Reset: {s_cd}" if s_cd else ""
+            print(f"  • Weekly Limit: {colorize_pct(s_used)} used [{GREEN}{s_bar}{RESET}]{s_info}")
+        else:
+            err_msg = codex.get("error") or codex.get("status")
+            print(f"  • Status:       {YELLOW}{err_msg}{RESET}")
+
+    # 4. 9Router
+    r9 = data.get("nine_router", {})
+    if r9.get("enabled"):
+        print_header("🔀 9Router Gateway")
+        srv_str = f"{GREEN}Remote Online ({r9.get('remote_url')}){RESET}" if r9.get("remote_running") else (
+            f"{GREEN}Local Online (port 20128){RESET}" if r9.get("local_running") else f"{DIM}Offline{RESET}"
+        )
+        print(f"  • Gateway Server: {srv_str}")
+        print(f"  • Today Activity: {BOLD}{r9.get('today_requests')}{RESET} requests · {BOLD}{r9.get('today_tokens')}{RESET} tokens")
+        if r9.get("provider_count") > 0:
+            print(f"  • Local Providers: {r9.get('provider_count')} configured")
+
+    # 5. OmniRoute
+    om = data.get("omniroute", {})
+    if om.get("enabled"):
+        print_header("🔄 OmniRoute Gateway")
+        om_stat = f"{GREEN}Online ({om.get('models_count')} models){RESET}" if om.get("status") == "ok" else f"{DIM}Offline (port 20128){RESET}"
+        print(f"  • Status:         {om_stat}")
+
+    # 6. Custom APIs
+    cust_list = data.get("custom_apis", [])
+    if cust_list:
+        for c in cust_list:
+            print_header(f"📡 {c.get('name', 'Custom API')}")
+            if c.get("status") == "ok":
+                u = c.get("used_pct")
+                cd = c.get("countdown")
+                cd_str = f" · Reset: {cd}" if cd else ""
+                print(f"  • Usage:        {colorize_pct(u)} used [{GREEN}{c.get('bar')}{RESET}]{cd_str}")
+            else:
+                print(f"  • Error:        {RED}{c.get('error')}{RESET}")
+
+    print(f"\n{DIM}{'─' * 65}{RESET}")
+    print(f"{BOLD}Top Bar Badge:{RESET} {data.get('summary', {}).get('text')}\n")
+
+
+def cmd_config(args):
+    cfg_file = ai_collector.CONFIG_FILE
+    if args.edit:
+        editor = os.environ.get("EDITOR", "nano")
+        subprocess.run([editor, str(cfg_file)])
+    else:
+        print(f"Configuration file: {cfg_file}")
+        with open(cfg_file) as f:
+            print(f.read())
+
+
+def cmd_topbar(args):
+    data = ai_collector.collect_all()
+    print(data.get("summary", {}).get("text", ""))
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="AI Account Limit & Quota Monitor (CLI & Top Bar)",
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    subparsers = parser.add_subparsers(dest="command")
+
+    # status command
+    p_status = subparsers.add_parser("status", help="Show current AI account limits and usage")
+    p_status.add_argument("--json", action="store_true", help="Output raw JSON")
+    p_status.add_argument("--all-models", "-a", action="store_true", help="List quota for all Antigravity models")
+
+    # topbar command
+    subparsers.add_parser("topbar", help="Print single-line summary badge for top bar / status line")
+
+    # config command
+    p_config = subparsers.add_parser("config", help="View or edit configuration file")
+    p_config.add_argument("--edit", "-e", action="store_true", help="Open config file in $EDITOR")
+
+    args = parser.parse_args()
+
+    if args.command == "status" or args.command is None:
+        cmd_status(args)
+    elif args.command == "topbar":
+        cmd_topbar(args)
+    elif args.command == "config":
+        cmd_config(args)
+
+
+if __name__ == "__main__":
+    main()

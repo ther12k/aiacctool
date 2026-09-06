@@ -1,0 +1,12 @@
+{
+  "name": "AI Account & Limit Monitor",
+  "description": "Monitor AI limits, quotas, and reset countdowns for GLM, Google Antigravity, OpenAI Codex, 9Router, OmniRoute, and custom APIs directly on your top bar.",
+  "uuid": "ai-usage-monitor@ther12k",
+  "shell-version": [
+    "45",
+    "46",
+    "47"
+  ],
+  "version": 1,
+  "url": "https://github.com/ther12k/aiacctool"
+}

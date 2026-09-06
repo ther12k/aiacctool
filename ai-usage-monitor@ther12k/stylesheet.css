@@ -1,0 +1,57 @@
+.ai-monitor-panel-box {
+    spacing: 6px;
+}
+
+.ai-monitor-icon {
+    icon-size: 16px;
+}
+
+.ai-monitor-label {
+    font-weight: 600;
+    font-size: 12px;
+}
+
+.ai-monitor-header {
+    font-weight: bold;
+    font-size: 13px;
+    padding: 6px 12px;
+    color: #8ab4f8;
+}
+
+.ai-monitor-section-title {
+    font-weight: bold;
+    font-size: 12px;
+    padding: 6px 12px 2px 12px;
+    color: #e8eaed;
+}
+
+.ai-monitor-item {
+    padding: 4px 12px;
+    font-size: 11.5px;
+}
+
+.ai-monitor-val-ok {
+    color: #81c995;
+    font-weight: bold;
+}
+
+.ai-monitor-val-warn {
+    color: #fdd663;
+    font-weight: bold;
+}
+
+.ai-monitor-val-err {
+    color: #f28b82;
+    font-weight: bold;
+}
+
+.ai-monitor-val-muted {
+    color: #9aa0a6;
+    font-size: 11px;
+}
+
+.ai-monitor-reset-badge {
+    color: #78a9ff;
+    font-size: 11px;
+    margin-left: 6px;
+}
