@@ -20,7 +20,9 @@ Built natively for **GNOME Shell 46+** (Ubuntu 24.04+) with companion CLI and au
   - **Custom APIs & OpenRouter**: Easily configure custom API endpoints with token authentication and JSON response path extraction.
 - **Themes & Custom Appearance**: Choose from 6 curated themes (**Catppuccin Mocha**, **Nord Frost**, **Dracula Vampire**, **Cyberpunk Neon**, **Minimal Monochrome**, and **Default Cyber**) or customize colors, fonts, and icons directly.
 - **Theme Switcher**: Switch themes on the fly via the top-bar dropdown menu or the CLI (`aiacctool theme set catppuccin`).
-- **Zero-Config Auto Discovery**: Automatically reads existing credentials from `~/.claude/settings.json`, `~/.codex/auth.json`, `~/.9router/db/data.sqlite`, and local process sockets.
+- **Multi-Account GLM**: Auto-discovers **all** your Z.ai keys (Claude Code settings, OpenCode auth, env vars) and shows **each account separately** in the top bar with its own usage % and reset countdown (e.g. `⚡c 51%⌛3h  ⚡o 100%⌛2h`).
+- **Grouped Average for Other Providers**: Antigravity (Claude/Gemini), Codex, and custom APIs collapse into a single averaged badge (e.g. `🌐62%`) without reset times, keeping the top bar compact.
+- **Zero-Config Auto Discovery**: Automatically reads existing credentials from `~/.claude/settings.json`, `~/.local/share/opencode/auth.json`, `~/.codex/auth.json`, `~/.9router/db/data.sqlite`, and local process sockets.
 
 ---
 
@@ -28,10 +30,11 @@ Built natively for **GNOME Shell 46+** (Ubuntu 24.04+) with companion CLI and au
 
 ### Top Bar Indicator
 ```text
-[✓] ⚡0%  🌌43%⏳2h 31m
+[🛡] ⚡c 51%⌛3h 0m  ⚡o 100%⌛2h 4m  🌐62%
 ```
-- `⚡0%` — GLM tokens used
-- `🌌43%⏳2h 31m` — Antigravity Claude Sonnet quota remaining with reset countdown
+- `⚡c 51%⌛3h 0m` — GLM account "claude": 51% used, resets in 3h
+- `⚡o 100%⌛2h 4m` — GLM account "opencode": exhausted, resets in 2h
+- `🌐62%` — grouped **average remaining** across all other providers (no time shown)
 - Status icon changes dynamically: green checkmark on healthy, warning icon when quota > 80% used.
 
 ### Rich Dropdown Menu (Click on Top Bar)

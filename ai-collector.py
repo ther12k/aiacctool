@@ -52,7 +52,8 @@ THEME_PRESETS = {
             "nine_router": "🔀",
             "omniroute": "🔄",
             "custom": "📡",
-            "reset": "⏳"
+            "reset": "⏳",
+            "group": "🌐"
         }
     },
     "catppuccin": {
@@ -77,7 +78,8 @@ THEME_PRESETS = {
             "nine_router": "🔀",
             "omniroute": "🔄",
             "custom": "📡",
-            "reset": "⏱"
+            "reset": "⏱",
+            "group": "🧩"
         }
     },
     "nord": {
@@ -102,7 +104,8 @@ THEME_PRESETS = {
             "nine_router": "⇄",
             "omniroute": "🔄",
             "custom": "📡",
-            "reset": "⏳"
+            "reset": "⏳",
+            "group": "🧭"
         }
     },
     "dracula": {
@@ -127,7 +130,8 @@ THEME_PRESETS = {
             "nine_router": "🩸",
             "omniroute": "🔄",
             "custom": "📡",
-            "reset": "⌛"
+            "reset": "⌛",
+            "group": "🕸️"
         }
     },
     "cyberpunk": {
@@ -152,7 +156,8 @@ THEME_PRESETS = {
             "nine_router": "🔀",
             "omniroute": "🔄",
             "custom": "📡",
-            "reset": "⏳"
+            "reset": "⏳",
+            "group": "🛰️"
         }
     },
     "monochrome": {
@@ -177,7 +182,8 @@ THEME_PRESETS = {
             "nine_router": "[R9]",
             "omniroute": "[OMN]",
             "custom": "[API]",
-            "reset": "->"
+            "reset": "->",
+            "group": "[AVG]"
         }
     }
 }
@@ -358,38 +364,63 @@ def format_local_time_ms(ms):
         return ""
 
 
-def check_glm(cfg):
-    glm_cfg = cfg.get("providers", {}).get("glm", {})
-    if not glm_cfg.get("enabled", True):
-        return {"enabled": False, "status": "disabled"}
+def _autodetect_glm_accounts():
+    """
+    Discovers all local Z.ai/GLM API keys (one per account) from known tool configs.
+    Returns a list of {name, short, api_key} dicts, deduplicated by key.
+    """
+    found = []
 
-    token = glm_cfg.get("api_key")
-    if not token and glm_cfg.get("auto_detect", True):
-        claude_path = Path.home() / ".claude" / "settings.json"
-        if claude_path.exists():
-            try:
-                with open(claude_path) as f:
-                    c_data = json.load(f)
-                    token = c_data.get("env", {}).get("ANTHROPIC_AUTH_TOKEN") or c_data.get("env", {}).get("ANTHROPIC_API_KEY")
-            except Exception:
-                pass
-        if not token:
-            token = os.environ.get("ZAI_API_KEY") or os.environ.get("ZHIPU_API_KEY")
+    # 1. Claude Code settings (~/.claude/settings.json, only if pointed at z.ai)
+    p = Path.home() / ".claude" / "settings.json"
+    if p.exists():
+        try:
+            with open(p) as f:
+                env = json.load(f).get("env", {})
+            base = env.get("ANTHROPIC_BASE_URL") or ""
+            key = env.get("ANTHROPIC_AUTH_TOKEN") or env.get("ANTHROPIC_API_KEY")
+            if key and ("z.ai" in base or "bigmodel" in base or not base):
+                found.append({"name": "claude", "short": "c", "api_key": key})
+        except Exception:
+            pass
 
-    if not token:
-        return {"enabled": True, "status": "not_configured", "error": "No Z.ai API key"}
+    # 2. OpenCode auth (~/.local/share/opencode/auth.json -> zai.key)
+    p = Path.home() / ".local" / "share" / "opencode" / "auth.json"
+    if p.exists():
+        try:
+            with open(p) as f:
+                key = (json.load(f).get("zai") or {}).get("key")
+            if key:
+                found.append({"name": "opencode", "short": "o", "api_key": key})
+        except Exception:
+            pass
 
-    base_url = glm_cfg.get("base_url", "https://api.z.ai").rstrip("/")
+    # 3. Environment variables
+    key = os.environ.get("ZAI_API_KEY") or os.environ.get("ZHIPU_API_KEY")
+    if key:
+        found.append({"name": "env", "short": "e", "api_key": key})
+
+    # Deduplicate by key, preserving order
+    seen = set()
+    out = []
+    for acc in found:
+        if acc["api_key"] not in seen:
+            seen.add(acc["api_key"])
+            out.append(acc)
+    return out
+
+
+def _query_glm_account(name, short, api_key, base_url):
+    """Queries the z.ai monitor API for a single GLM account."""
     url = f"{base_url}/api/monitor/usage/quota/limit"
     req = urllib.request.Request(
         url,
         headers={
-            "Authorization": token,
+            "Authorization": api_key,
             "Accept-Language": "en-US,en",
             "User-Agent": "aiacctool-monitor"
         }
     )
-
     try:
         with urllib.request.urlopen(req, timeout=5) as resp:
             data = json.loads(resp.read().decode())
@@ -403,7 +434,8 @@ def check_glm(cfg):
             time_reset_ms = time_limit.get("nextResetTime") if time_limit else None
 
             return {
-                "enabled": True,
+                "name": name,
+                "short": short,
                 "status": "ok",
                 "level": data.get("data", {}).get("level", "Standard"),
                 "token_quota": {
@@ -426,9 +458,61 @@ def check_glm(cfg):
                 }
             }
     except urllib.error.HTTPError as he:
-        return {"enabled": True, "status": "error", "error": f"HTTP {he.code}"}
+        return {"name": name, "short": short, "status": "error", "error": f"HTTP {he.code}"}
     except Exception as e:
-        return {"enabled": True, "status": "error", "error": str(e)}
+        return {"name": name, "short": short, "status": "error", "error": str(e)}
+
+
+def check_glm(cfg):
+    glm_cfg = cfg.get("providers", {}).get("glm", {})
+    if not glm_cfg.get("enabled", True):
+        return {"enabled": False, "status": "disabled"}
+
+    base_url = glm_cfg.get("base_url", "https://api.z.ai").rstrip("/")
+
+    # Build the account list: manual config accounts first, then auto-detected
+    accounts_cfg = glm_cfg.get("accounts", [])
+    accounts = []
+    if accounts_cfg:
+        for acc in accounts_cfg:
+            key = acc.get("api_key")
+            if key:
+                accounts.append({
+                    "name": acc.get("name", "account"),
+                    "short": acc.get("short") or (acc.get("name", "a")[:1].lower()),
+                    "api_key": key,
+                })
+    if glm_cfg.get("auto_detect", True):
+        for acc in _autodetect_glm_accounts():
+            if acc["api_key"] not in [a["api_key"] for a in accounts]:
+                accounts.append(acc)
+
+    # Legacy single key from config
+    legacy_key = glm_cfg.get("api_key")
+    if legacy_key and legacy_key not in [a["api_key"] for a in accounts]:
+        accounts.insert(0, {"name": "main", "short": "m", "api_key": legacy_key})
+
+    if not accounts:
+        return {"enabled": True, "status": "not_configured", "error": "No Z.ai API key found"}
+
+    results = [_query_glm_account(a["name"], a["short"], a["api_key"], base_url) for a in accounts]
+    ok_results = [r for r in results if r.get("status") == "ok"]
+
+    out = {
+        "enabled": True,
+        "status": "ok" if ok_results else "error",
+        "accounts": results,
+        "ok_count": len(ok_results),
+    }
+
+    # Backward-compatible top-level quota (first healthy account)
+    if ok_results:
+        out["level"] = ok_results[0].get("level")
+        out["token_quota"] = ok_results[0].get("token_quota")
+        out["tool_quota"] = ok_results[0].get("tool_quota")
+    else:
+        out["error"] = results[0].get("error", "no healthy account") if results else "no accounts"
+    return out
 
 
 def check_antigravity(cfg):
@@ -686,7 +770,7 @@ def check_9router(cfg):
     except Exception:
         result["local_running"] = False
 
-    # 3. Check remote server health (e.g. your-router.example.com)
+    # 3. Check remote server health (if a remote_url is configured)
     remote_url = r_cfg.get("remote_url", "").rstrip("/")
     if remote_url:
         try:
@@ -841,77 +925,90 @@ def check_custom_apis(cfg):
 def generate_panel_summary(results, cfg, theme):
     """
     Generates a concise label and status icon for the GNOME top bar, styled according to the active theme.
+
+    Layout policy:
+    - Each GLM account gets its own badge WITH time-left (user request).
+    - All other providers (Antigravity Claude/Gemini, Codex, custom APIs) are grouped
+      into a single AVERAGE badge WITHOUT time-left.
     """
     p_format = cfg.get("panel_format", "compact")
     show_reset = cfg.get("show_reset_in_topbar", True)
     badges = theme.get("badge_icons", {})
 
     b_glm = badges.get("glm", "⚡")
-    b_ag = badges.get("antigravity", "🌌")
-    b_codex = badges.get("codex", "🤖")
-    b_router = badges.get("nine_router", "🔀")
+    b_grp = badges.get("group", "🌐")
     b_rst = badges.get("reset", "⏳")
 
     parts = []
     has_warning = False
     has_ok = False
 
-    # 1. GLM
+    # 1. GLM — one badge per account, each with reset countdown
     glm = results.get("glm", {})
-    if glm.get("enabled") and glm.get("status") == "ok":
-        has_ok = True
-        tok = glm.get("token_quota", {})
-        used = tok.get("used_pct")
-        cd = tok.get("countdown")
-        if used is not None:
+    if glm.get("enabled"):
+        accounts = glm.get("accounts", [])
+        multi = len([a for a in accounts if a.get("status") == "ok"]) > 1
+        for acc in accounts:
+            if acc.get("status") != "ok":
+                continue
+            has_ok = True
+            tok = acc.get("token_quota", {})
+            used = tok.get("used_pct")
+            cd = tok.get("countdown")
+            if used is None:
+                continue
             if used >= 90:
                 has_warning = True
+            tag = f"{acc.get('short', '')} " if multi else ""
+            cd_str = f"{b_rst}{cd}" if (show_reset and cd) else ""
             if p_format == "compact":
-                parts.append(f"{b_glm}{used}%" + (f"({cd})" if (used >= 90 and cd) else ""))
+                parts.append(f"{b_glm}{tag}{used}%{cd_str}")
             elif p_format == "standard":
-                parts.append(f"GLM {used}%" + (f" ({cd})" if (used >= 90 and cd) else ""))
+                nm = acc.get("name", "glm")
+                parts.append(f"GLM-{nm} {used}%" + (f" ({cd})" if (show_reset and cd) else ""))
             elif p_format == "full":
-                parts.append(f"GLM: {used}% used")
+                parts.append(f"GLM[{acc.get('name', 'acct')}]: {used}% used{(' · ' + cd) if (show_reset and cd) else ''}")
 
-    # 2. Antigravity
+    # 2. Grouped average for all other providers (no time-left shown)
+    group_remaining = []
+
     ag = results.get("antigravity", {})
     if ag.get("enabled") and ag.get("status") == "ok":
         has_ok = True
-        claude = ag.get("claude_sonnet", {})
-        rem = claude.get("remaining_pct")
-        cd = claude.get("countdown")
-        if rem is not None:
-            if rem <= 20:
-                has_warning = True
-            if p_format == "compact":
-                ag_str = f"{b_ag}{rem:.0f}%"
-                if show_reset and cd:
-                    ag_str += f"{b_rst}{cd}"
-                parts.append(ag_str)
-            elif p_format == "standard":
-                parts.append(f"AG {rem:.0f}%" + (f" {b_rst}{cd}" if (show_reset and cd) else ""))
-            elif p_format == "full":
-                parts.append(f"AG: {rem:.0f}% left")
+        for key in ("claude_sonnet", "gemini"):
+            rem = (ag.get(key) or {}).get("remaining_pct")
+            if rem is not None:
+                group_remaining.append(rem)
+                if rem <= 20:
+                    has_warning = True
 
-    # 3. Codex
     codex = results.get("codex", {})
-    if codex.get("enabled"):
-        if codex.get("status") == "ok":
-            has_ok = True
-            p = codex.get("primary_window", {})
-            u = p.get("used_pct")
-            if u is not None:
-                parts.append(f"{b_codex}{u}%" if p_format == "compact" else f"Codex {u}%")
-        elif codex.get("status") == "payment_required":
-            if p_format == "full":
-                parts.append("Codex: Plan Inactive")
+    if codex.get("enabled") and codex.get("status") == "ok":
+        has_ok = True
+        u = (codex.get("primary_window") or {}).get("used_pct")
+        if u is not None:
+            group_remaining.append(100 - u)
+            if u >= 90:
+                has_warning = True
 
-    # 4. 9Router Indicator
+    for cust in results.get("custom_apis", []):
+        if cust.get("status") == "ok" and cust.get("used_pct") is not None:
+            group_remaining.append(100 - cust["used_pct"])
+
     r9 = results.get("nine_router", {})
     if r9.get("enabled") and (r9.get("remote_running") or r9.get("local_running")):
         has_ok = True
 
-    badge_text = "  ".join(parts) if parts else ("AI Monitor" if has_ok else "AI Offline")
+    if group_remaining:
+        avg = sum(group_remaining) / len(group_remaining)
+        if p_format == "compact":
+            parts.append(f"{b_grp}{avg:.0f}%")
+        elif p_format == "standard":
+            parts.append(f"Others avg {avg:.0f}%")
+        elif p_format == "full":
+            parts.append(f"Others (avg of {len(group_remaining)}): {avg:.0f}% left")
+
+    badge_text = " ".join(parts) if parts else ("AI Monitor" if has_ok else "AI Offline")
     icon = theme.get("icon_warn") if has_warning else (theme.get("icon_ok") if has_ok else theme.get("icon_err"))
 
     return {

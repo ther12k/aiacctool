@@ -80,27 +80,32 @@ def cmd_status(args):
     glm = data.get("glm", {})
     if glm.get("enabled"):
         print_header("⚡ GLM (Z.ai / BigModel)")
-        if glm.get("status") == "ok":
-            tok = glm.get("token_quota", {})
-            used_pct = tok.get("used_pct")
-            rem_pct = tok.get("remaining_pct")
-            bar = tok.get("bar", "")
-            cd = tok.get("countdown")
-            rst_t = tok.get("reset_time")
-            rst_info = f" · Reset: {cd} ({rst_t})" if cd else ""
-            print(f"  • Tokens:       {colorize_pct(used_pct)} used [{GREEN}{bar}{RESET}]{rst_info}")
+        accounts = glm.get("accounts") or []
+        if not accounts:
+            accounts = [{"name": "main", "status": glm.get("status"),
+                         "token_quota": glm.get("token_quota"), "tool_quota": glm.get("tool_quota"),
+                         "error": glm.get("error"), "level": glm.get("level")}]
+        for acc in accounts:
+            prefix = f"[{acc.get('name', 'main')}] " if len(accounts) > 1 else ""
+            if acc.get("status") == "ok":
+                tok = acc.get("token_quota", {})
+                used_pct = tok.get("used_pct")
+                bar = tok.get("bar", "")
+                cd = tok.get("countdown")
+                rst_t = tok.get("reset_time")
+                rst_info = f" · Reset: {cd} ({rst_t})" if cd else ""
+                print(f"  {prefix}• Tokens:     {colorize_pct(used_pct)} used [{GREEN}{bar}{RESET}]{rst_info}")
 
-            tool = glm.get("tool_quota", {})
-            if tool.get("remaining") is not None:
-                t_used = tool.get("current", 0)
-                t_rem = tool.get("remaining", 0)
-                t_cd = tool.get("countdown")
-                t_rst_t = tool.get("reset_time")
-                t_info = f" · Reset: {t_cd} ({t_rst_t})" if t_cd else ""
-                print(f"  • Web Search:   {t_used} used / {GREEN}{t_rem} remaining{RESET}{t_info}")
-            print(f"  • Plan Level:   {CYAN}{glm.get('level', 'Standard')}{RESET}")
-        else:
-            print(f"  • Status:       {RED}{glm.get('error') or glm.get('status')}{RESET}")
+                tool = acc.get("tool_quota", {})
+                if tool.get("remaining") is not None:
+                    t_used = tool.get("current", 0)
+                    t_rem = tool.get("remaining", 0)
+                    t_cd = tool.get("countdown")
+                    t_info = f" · Reset: {t_cd} ({tool.get('reset_time', '')})" if t_cd else ""
+                    print(f"  {prefix}  • Tools:     {t_used} used / {GREEN}{t_rem} remaining{RESET}{t_info}")
+                print(f"  {prefix}  • Plan:      {CYAN}{acc.get('level', 'Standard')}{RESET}")
+            else:
+                print(f"  {prefix}• Status:     {RED}{acc.get('error') or acc.get('status')}{RESET}")
 
     # 2. Google Antigravity
     ag = data.get("antigravity", {})

@@ -355,32 +355,39 @@ class AIIndicator extends PanelMenu.Button {
             }
             this._contentSection.addMenuItem(title);
 
-            if (glm.status === 'ok') {
-                const tok = glm.token_quota || {};
-                const tokUsed = tok.used_pct !== null && tok.used_pct !== undefined ? `${tok.used_pct}%` : '0%';
-                const tokBar = tok.bar ? ` [${tok.bar}]` : '';
-                const tokCd = tok.countdown ? ` · Reset: ${tok.countdown}` : '';
-                const tokItem = new PopupMenu.PopupMenuItem(
-                    `  Tokens: ${tokUsed} used${tokBar}${tokCd}`,
-                    { reactive: false, style_class: 'ai-monitor-item' }
-                );
-                this._contentSection.addMenuItem(tokItem);
+            const accounts = glm.accounts && glm.accounts.length > 0
+                ? glm.accounts
+                : [{name: 'main', status: glm.status, token_quota: glm.token_quota, tool_quota: glm.tool_quota, error: glm.error}];
 
-                const tool = glm.tool_quota || {};
-                if (tool.remaining !== null && tool.remaining !== undefined) {
-                    const toolCd = tool.countdown ? ` · Reset: ${tool.countdown}` : '';
-                    const toolItem = new PopupMenu.PopupMenuItem(
-                        `  Web Search / Tools: ${tool.current || 0} used / ${tool.remaining} left${toolCd}`,
+            for (const acc of accounts) {
+                const label = accounts.length > 1 ? `  • ${acc.name}: ` : '  ';
+                if (acc.status === 'ok') {
+                    const tok = acc.token_quota || {};
+                    const tokUsed = tok.used_pct !== null && tok.used_pct !== undefined ? `${tok.used}%` : '0%';
+                    const tokBar = tok.bar ? ` [${tok.bar}]` : '';
+                    const tokCd = tok.countdown ? ` · Reset: ${tok.countdown} (${tok.reset_time || ''})` : '';
+                    const tokItem = new PopupMenu.PopupMenuItem(
+                        `${label}Tokens: ${tokUsed} used${tokBar}${tokCd}`,
                         { reactive: false, style_class: 'ai-monitor-item' }
                     );
-                    this._contentSection.addMenuItem(toolItem);
+                    this._contentSection.addMenuItem(tokItem);
+
+                    const tool = acc.tool_quota || {};
+                    if (tool.remaining !== null && tool.remaining !== undefined) {
+                        const toolCd = tool.countdown ? ` · Reset: ${tool.countdown}` : '';
+                        const toolItem = new PopupMenu.PopupMenuItem(
+                            `${label}    Tools: ${tool.current || 0} used / ${tool.remaining} left${toolCd}`,
+                            { reactive: false, style_class: 'ai-monitor-item' }
+                        );
+                        this._contentSection.addMenuItem(toolItem);
+                    }
+                } else {
+                    const errItem = new PopupMenu.PopupMenuItem(
+                        `${label}Status: ${acc.error || acc.status}`,
+                        { reactive: false, style_class: 'ai-monitor-item ai-monitor-val-err' }
+                    );
+                    this._contentSection.addMenuItem(errItem);
                 }
-            } else {
-                const errItem = new PopupMenu.PopupMenuItem(
-                    `  Status: ${glm.error || glm.status}`,
-                    { reactive: false, style_class: 'ai-monitor-item ai-monitor-val-err' }
-                );
-                this._contentSection.addMenuItem(errItem);
             }
             this._contentSection.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
         }
