@@ -960,7 +960,8 @@ def generate_panel_summary(results, cfg, theme):
             if used >= 90:
                 has_warning = True
             tag = f"{acc.get('short', '')} " if multi else ""
-            cd_str = f"{b_rst}{cd}" if (show_reset and cd) else ""
+            cd_c = (cd or "").replace(" ", "")
+            cd_str = f"{b_rst}{cd_c}" if (show_reset and cd_c) else ""
             if p_format == "compact":
                 parts.append(f"{b_glm}{tag}{used}%{cd_str}")
             elif p_format == "standard":
@@ -1019,7 +1020,7 @@ def generate_panel_summary(results, cfg, theme):
             elif p_format == "full":
                 parts.append(f"Others: {online} upstream accounts online (no quota data)")
 
-    badge_text = " ".join(parts) if parts else ("AI Monitor" if has_ok else "AI Offline")
+    badge_text = " · ".join(parts) if parts else ("AI Monitor" if has_ok else "AI Offline")
     icon = theme.get("icon_warn") if has_warning else (theme.get("icon_ok") if has_ok else theme.get("icon_err"))
 
     return {

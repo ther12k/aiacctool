@@ -193,20 +193,29 @@ class AIIndicator extends PanelMenu.Button {
     _populateThemes() {
         this._themeSubMenu.menu.removeAll();
         const themes = [
-            { id: 'default', name: 'Default Cyber (Blue)' },
-            { id: 'catppuccin', name: 'Catppuccin Mocha (Mauve)' },
-            { id: 'nord', name: 'Nord Frost (Cyan)' },
-            { id: 'dracula', name: 'Dracula Vampire (Purple)' },
-            { id: 'cyberpunk', name: 'Cyberpunk Neon (Glow)' },
-            { id: 'monochrome', name: 'Minimal Monochrome (Clean)' },
+            { id: 'default', name: 'Default Cyber' },
+            { id: 'catppuccin', name: 'Catppuccin Mocha' },
+            { id: 'nord', name: 'Nord Frost' },
+            { id: 'dracula', name: 'Dracula Vampire' },
+            { id: 'cyberpunk', name: 'Cyberpunk Neon' },
+            { id: 'monochrome', name: 'Minimal Monochrome' },
         ];
 
-        const currentThemeId = (this._lastData && this._lastData.theme) ? this._lastData.theme.theme_id : 'default';
+        const theme = (this._lastData && this._lastData.theme) || {};
+        const currentThemeId = theme.theme_id || 'default';
 
         for (const t of themes) {
-            const isSelected = t.id === currentThemeId;
-            const prefix = isSelected ? '● ' : '○ ';
-            const item = new PopupMenu.PopupMenuItem(`${prefix}${t.name}`);
+            const item = new PopupMenu.PopupMenuItem('');
+            const prefix = currentThemeId === t.id ? '● ' : '○ ';
+            item.label.text = `${prefix}${t.name}`;
+            // Color the marker with the preset's signature color
+            const presetColor = {
+                default: '#8ab4f8', catppuccin: '#cba6f7', nord: '#88c0d0',
+                dracula: '#bd93f9', cyberpunk: '#00ffcc', monochrome: '#ffffff',
+            }[t.id];
+            item.label.set_style(currentThemeId === t.id
+                ? `color: ${presetColor}; font-weight: bold;`
+                : `color: ${presetColor}99;`);
             item.connect('activate', () => {
                 this._setTheme(t.id);
             });
@@ -352,293 +361,350 @@ class AIIndicator extends PanelMenu.Button {
         // 4. Re-populate Menu Content Section
         this._contentSection.removeAll();
 
-        // Subtitle / Last updated
-        if (data.time_str) {
-            const timeItem = new PopupMenu.PopupMenuItem(
-                `Theme: ${theme.name || 'Default'} · Last sync: ${data.time_str}`,
-                { reactive: false, style_class: 'ai-monitor-val-muted' }
-            );
-            this._contentSection.addMenuItem(timeItem);
-            this._contentSection.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+        const T = {
+            ok: theme.menu_ok_color || '#81c995',
+            warn: theme.menu_warn_color || '#fdd663',
+            err: theme.menu_err_color || '#f28b82',
+            muted: theme.menu_muted_color || '#9aa0a6',
+            accent: theme.menu_section_color || '#8ab4f8',
+        };
+
+        // Small helpers used while rendering rows
+        const sum = (arr, fn) => arr.reduce((acc, v) => acc + (fn ? fn(v) : v), 0);
+        const fmtInt = n => (n || 0).toLocaleString('en-US');
+
+        // Compact status line under the header
+        const onlineBits = [];
+        const glmOk = ((data.glm || {}).accounts || []).filter(a => a.status === 'ok').length;
+        if (glmOk)
+            onlineBits.push(`GLM ${glmOk}/${((data.glm || {}).accounts || []).length}`);
+        if ((data.antigravity || {}).status === 'ok')
+            onlineBits.push('Antigravity');
+        if ((data.codex || {}).status === 'ok')
+            onlineBits.push('Codex');
+        const r9 = data.nine_router || {};
+        if (r9.enabled && (r9.remote_running || r9.local_running)) {
+            const up = sum(Object.values(r9.filtered_providers || {}), p => p.active_count || 0);
+            onlineBits.push(`9Router ${up}↑`);
         }
+        const statusLine = onlineBits.length > 0
+            ? `● ${onlineBits.join('  ·  ')}`
+            : '○ All providers offline';
+        const statusRow = new PopupMenu.PopupMenuItem(statusLine, {
+            reactive: false,
+            style_class: 'ai-monitor-val-muted',
+        });
+        statusRow.label.set_style(onlineBits.length ? `color: ${T.ok};` : `color: ${T.muted};`);
+        this._contentSection.addMenuItem(statusRow);
 
         // ==================== GLM Section ====================
         const glm = data.glm || {};
         if (glm.enabled) {
-            const title = new PopupMenu.PopupMenuItem(_('⚡ GLM (Z.ai / BigModel)'), {
-                reactive: false,
-                style_class: 'ai-monitor-section-title',
-            });
-            if (theme.menu_section_color) {
-                title.label.set_style(`color: ${theme.menu_section_color};`);
-            }
-            this._contentSection.addMenuItem(title);
-
             const accounts = glm.accounts && glm.accounts.length > 0
                 ? glm.accounts
                 : [{name: 'main', status: glm.status, token_quota: glm.token_quota, tool_quota: glm.tool_quota, error: glm.error}];
 
+            const exhausted = accounts.filter(a => a.status === 'ok' && (a.token_quota || {}).used_pct >= 95).length;
+            this._addSectionTitle(this._contentSection, theme, '✦ GLM (Zhipu)', `${accounts.length} account${accounts.length > 1 ? 's' : ''}${exhausted ? ` · ${exhausted} exhausted` : ''}`);
+
             for (const acc of accounts) {
-                const label = accounts.length > 1 ? `  • ${acc.name}: ` : '  ';
                 if (acc.status === 'ok') {
                     const tok = acc.token_quota || {};
-                    const tokUsed = tok.used_pct !== null && tok.used_pct !== undefined ? `${tok.used}%` : '0%';
-                    const tokBar = tok.bar ? ` [${tok.bar}]` : '';
-                    const tokCd = tok.countdown ? ` · Reset: ${tok.countdown} (${tok.reset_time || ''})` : '';
-                    const tokItem = new PopupMenu.PopupMenuItem(
-                        `${label}Tokens: ${tokUsed} used${tokBar}${tokCd}`,
-                        { reactive: false, style_class: 'ai-monitor-item' }
-                    );
-                    this._contentSection.addMenuItem(tokItem);
-
-                    const tool = acc.tool_quota || {};
-                    if (tool.remaining !== null && tool.remaining !== undefined) {
-                        const toolCd = tool.countdown ? ` · Reset: ${tool.countdown}` : '';
-                        const toolItem = new PopupMenu.PopupMenuItem(
-                            `${label}    Tools: ${tool.current || 0} used / ${tool.remaining} left${toolCd}`,
-                            { reactive: false, style_class: 'ai-monitor-item' }
-                        );
-                        this._contentSection.addMenuItem(toolItem);
-                    }
+                    this._addQuotaRow(this._contentSection, theme, {
+                        name: acc.name,
+                        usedPct: tok.used_pct,
+                        countdown: tok.countdown,
+                        resetTime: tok.reset_time,
+                        sub: this._toolLine(acc.tool_quota),
+                    });
                 } else {
-                    const errItem = new PopupMenu.PopupMenuItem(
-                        `${label}Status: ${acc.error || acc.status}`,
-                        { reactive: false, style_class: 'ai-monitor-item ai-monitor-val-err' }
-                    );
-                    this._contentSection.addMenuItem(errItem);
+                    this._addStatusRow(this._contentSection, theme, {
+                        name: acc.name,
+                        text: acc.error || acc.status,
+                        kind: 'err',
+                    });
                 }
             }
             this._contentSection.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
         }
 
-        // ==================== Google Antigravity Section ====================
+        // ==================== Antigravity Section ====================
         const ag = data.antigravity || {};
         if (ag.enabled) {
-            const title = new PopupMenu.PopupMenuItem(_('🌌 Google Antigravity (agy)'), {
-                reactive: false,
-                style_class: 'ai-monitor-section-title',
-            });
-            if (theme.menu_section_color) {
-                title.label.set_style(`color: ${theme.menu_section_color};`);
-            }
-            this._contentSection.addMenuItem(title);
-
             if (ag.status === 'ok') {
+                const agSub = new PopupMenu.PopupSubMenuMenuItem('');
+                this._styleSubmenuHeader(agSub, '🌌 Antigravity', this._pctText((ag.gemini || {}).remaining_pct, true), theme);
                 const sonnet = ag.claude_sonnet || {};
-                const sonnetRem = sonnet.remaining_pct !== null && sonnet.remaining_pct !== undefined ? `${sonnet.remaining_pct}%` : 'N/A';
-                const sonnetBar = sonnet.bar ? ` [${sonnet.bar}]` : '';
-                const sonnetCd = sonnet.countdown ? ` · Reset: ${sonnet.countdown} (${sonnet.reset_time})` : '';
-                const sonnetItem = new PopupMenu.PopupMenuItem(
-                    `  Claude Sonnet: ${sonnetRem} left${sonnetBar}${sonnetCd}`,
-                    { reactive: false, style_class: 'ai-monitor-item' }
-                );
-                this._contentSection.addMenuItem(sonnetItem);
-
                 const gemini = ag.gemini || {};
-                const geminiRem = gemini.remaining_pct !== null && gemini.remaining_pct !== undefined ? `${gemini.remaining_pct}%` : 'N/A';
-                const geminiBar = gemini.bar ? ` [${gemini.bar}]` : '';
-                const geminiCd = gemini.countdown ? ` · Reset: ${gemini.countdown} (${gemini.reset_time})` : '';
-                const geminiItem = new PopupMenu.PopupMenuItem(
-                    `  Gemini 3.8: ${geminiRem} left${geminiBar}${geminiCd}`,
-                    { reactive: false, style_class: 'ai-monitor-item' }
-                );
-                this._contentSection.addMenuItem(geminiItem);
-
-                // Submenu for all models
+                this._addQuotaRow(agSub.menu, theme, {
+                    name: 'Claude Sonnet', usedPct: sonnet.used_pct,
+                    countdown: sonnet.countdown, resetTime: sonnet.reset_time, invert: true,
+                });
+                this._addQuotaRow(agSub.menu, theme, {
+                    name: 'Gemini', usedPct: gemini.used_pct,
+                    countdown: gemini.countdown, resetTime: gemini.reset_time, invert: true,
+                });
                 if (ag.models && Object.keys(ag.models).length > 0) {
-                    const subMenu = new PopupMenu.PopupSubMenuMenuItem(`  All Models Quota (${ag.models_count})`);
+                    const modelsSub = new PopupMenu.PopupSubMenuMenuItem(`All models (${ag.models_count})`);
                     for (const [mName, mInfo] of Object.entries(ag.models)) {
-                        const rem = mInfo.remaining_pct !== null ? `${mInfo.remaining_pct}%` : '';
-                        const cd = mInfo.countdown && mInfo.countdown !== 'Ready' ? ` (${mInfo.countdown})` : '';
-                        const mItem = new PopupMenu.PopupMenuItem(
-                            `${mName}: ${rem} left${cd}`,
-                            { reactive: false }
+                        const rem = mInfo.remaining_pct;
+                        const cd = mInfo.countdown && mInfo.countdown !== 'Ready' ? ` · ${mInfo.countdown}` : '';
+                        const mRow = new PopupMenu.PopupMenuItem(
+                            `${mName}  ${rem !== null && rem !== undefined ? rem.toFixed(0) + '%' : ''}${cd}`,
+                            { reactive: false, style_class: 'ai-monitor-item' }
                         );
-                        subMenu.menu.addMenuItem(mItem);
+                        mRow.label.set_style(`color: ${this._remColor(rem, T)};`);
+                        modelsSub.menu.addMenuItem(mRow);
                     }
-                    this._contentSection.addMenuItem(subMenu);
+                    agSub.menu.addMenuItem(modelsSub);
                 }
-
-                const portItem = new PopupMenu.PopupMenuItem(
-                    `  Server: Local Port ${ag.port} Active`,
-                    { reactive: false, style_class: 'ai-monitor-item ai-monitor-val-muted' }
-                );
-                this._contentSection.addMenuItem(portItem);
+                this._contentSection.addMenuItem(agSub);
             } else {
-                const offItem = new PopupMenu.PopupMenuItem(
-                    `  Status: ${ag.error || 'Offline'}`,
-                    { reactive: false, style_class: 'ai-monitor-item ai-monitor-val-muted' }
-                );
-                this._contentSection.addMenuItem(offItem);
+                this._addStatusRow(this._contentSection, theme, {
+                    name: '🌌 Antigravity',
+                    text: ag.error || 'Offline',
+                    kind: 'muted',
+                });
             }
-            this._contentSection.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
         }
 
-        // ==================== OpenAI Codex Section ====================
+        // ==================== Codex Section ====================
         const codex = data.codex || {};
         if (codex.enabled) {
-            const title = new PopupMenu.PopupMenuItem(_('🤖 OpenAI Codex'), {
-                reactive: false,
-                style_class: 'ai-monitor-section-title',
-            });
-            if (theme.menu_section_color) {
-                title.label.set_style(`color: ${theme.menu_section_color};`);
-            }
-            this._contentSection.addMenuItem(title);
-
             if (codex.status === 'ok') {
                 const p = codex.primary_window || {};
-                const pUsed = p.used_pct !== null && p.used_pct !== undefined ? `${p.used_pct}%` : '0%';
-                const pBar = p.bar ? ` [${p.bar}]` : '';
-                const pCd = p.countdown ? ` · Reset: ${p.countdown}` : '';
-                const pItem = new PopupMenu.PopupMenuItem(
-                    `  5h Window: ${pUsed} used${pBar}${pCd}`,
-                    { reactive: false, style_class: 'ai-monitor-item' }
-                );
-                this._contentSection.addMenuItem(pItem);
-
                 const s = codex.secondary_window || {};
-                const sUsed = s.used_pct !== null && s.used_pct !== undefined ? `${s.used_pct}%` : '0%';
-                const sBar = s.bar ? ` [${s.bar}]` : '';
-                const sCd = s.countdown ? ` · Reset: ${s.countdown}` : '';
-                const sItem = new PopupMenu.PopupMenuItem(
-                    `  Weekly: ${sUsed} used${sBar}${sCd}`,
-                    { reactive: false, style_class: 'ai-monitor-item' }
-                );
-                this._contentSection.addMenuItem(sItem);
+                const cdSub = new PopupMenu.PopupSubMenuMenuItem('');
+                this._styleSubmenuHeader(cdSub, '🤖 Codex', this._pctText(p.used_pct), theme);
+                this._addQuotaRow(cdSub.menu, theme, {
+                    name: '5-hour window', usedPct: p.used_pct,
+                    countdown: p.countdown, resetTime: p.reset_time,
+                });
+                this._addQuotaRow(cdSub.menu, theme, {
+                    name: 'Weekly', usedPct: s.used_pct,
+                    countdown: s.countdown, resetTime: s.reset_time,
+                });
+                this._contentSection.addMenuItem(cdSub);
             } else {
-                const statMsg = codex.status === 'payment_required'
-                    ? 'Payment Required (Plan inactive)'
-                    : (codex.error || codex.status);
-                const errItem = new PopupMenu.PopupMenuItem(
-                    `  Status: ${statMsg}`,
-                    { reactive: false, style_class: 'ai-monitor-item ai-monitor-val-warn' }
-                );
-                this._contentSection.addMenuItem(errItem);
+                this._addStatusRow(this._contentSection, theme, {
+                    name: '🤖 Codex',
+                    text: codex.status === 'payment_required' ? 'Plan inactive' : (codex.error || codex.status),
+                    kind: 'warn',
+                });
             }
-            this._contentSection.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
         }
 
         // ==================== 9Router Section ====================
-        const r9 = data.nine_router || {};
         if (r9.enabled) {
-            const title = new PopupMenu.PopupMenuItem(_('🔀 9Router'), {
-                reactive: false,
-                style_class: 'ai-monitor-section-title',
+            const up = sum(Object.values(r9.filtered_providers || {}), p => p.active_count || 0);
+            const total = Object.keys(r9.all_providers || {}).length;
+            const r9Sub = new PopupMenu.PopupSubMenuMenuItem('');
+            this._styleSubmenuHeader(
+                r9Sub, '🔀 9Router',
+                r9.remote_running || r9.local_running
+                    ? `<span foreground="${T.ok}">${up}↑</span> of ${total}`
+                    : 'offline',
+                theme
+            );
+
+            const srvRow = new PopupMenu.PopupMenuItem(
+                `${r9.remote_running ? 'Remote' : 'Local'} gateway online · today ${fmtInt(r9.today_requests)} req / ${fmtInt(r9.today_tokens)} tok`,
+                { reactive: false, style_class: 'ai-monitor-item' }
+            );
+            r9Sub.menu.addMenuItem(srvRow);
+            r9Sub.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+
+            const hint = new PopupMenu.PopupMenuItem('Click a provider to (de)select it for monitoring:', {
+                reactive: false, style_class: 'ai-monitor-val-muted',
             });
-            if (theme.menu_section_color) {
-                title.label.set_style(`color: ${theme.menu_section_color};`);
-            }
-            this._contentSection.addMenuItem(title);
+            r9Sub.menu.addMenuItem(hint);
 
-            const srvText = r9.remote_running ? 'Remote: Online' : (r9.local_running ? 'Local: Online' : 'Offline');
-            const srvItem = new PopupMenu.PopupMenuItem(
-                `  Server: ${srvText}`,
-                { reactive: false, style_class: 'ai-monitor-item' }
-            );
-            this._contentSection.addMenuItem(srvItem);
-
-            const usageItem = new PopupMenu.PopupMenuItem(
-                `  Today: ${r9.today_requests} requests · ${r9.today_tokens} tokens`,
-                { reactive: false, style_class: 'ai-monitor-item' }
-            );
-            this._contentSection.addMenuItem(usageItem);
-
-            // Display monitored providers
-            const filtered = r9.filtered_providers || {};
-            for (const [pName, pInfo] of Object.entries(filtered)) {
+            for (const [pName, pInfo] of Object.entries(r9.all_providers || {})) {
+                const monitored = Boolean((r9.filtered_providers || {})[pName]);
                 const act = pInfo.active_count || 0;
                 const tot = pInfo.count || 0;
-                const accStr = (pInfo.accounts && pInfo.accounts.length > 0)
-                    ? ` (${pInfo.accounts.slice(0, 2).join(', ')})`
-                    : '';
-                const pStatusColor = act > 0 ? 'ai-monitor-val-ok' : 'ai-monitor-val-err';
-                const pItem = new PopupMenu.PopupMenuItem(
-                    `  • ${pName}: ${act}/${tot} active${accStr}`,
-                    { reactive: false, style_class: 'ai-monitor-item' }
-                );
-                this._contentSection.addMenuItem(pItem);
+                const mark = monitored ? '☑' : '☐';
+                const mItem = new PopupMenu.PopupMenuItem('');
+                const left = new St.Label({ text: `${mark} ${pName}` });
+                const right = new St.Label({ text: `${act}/${tot}` });
+                right.set_style(`color: ${act > 0 ? T.ok : T.err};`);
+                this._rowTwoSides(mItem, left, right, monitored);
+                mItem.connect('activate', () => this._toggleProvider('9router', pName));
+                r9Sub.menu.addMenuItem(mItem);
             }
-
-            // Submenu to pick / choose providers to monitor
-            const allP = r9.all_providers || {};
-            if (Object.keys(allP).length > 0) {
-                const provSubMenu = new PopupMenu.PopupSubMenuMenuItem(_('  ⚙️  Choose Providers to Monitor'));
-                for (const [pName, pInfo] of Object.entries(allP)) {
-                    const isMonitored = Boolean(filtered[pName]);
-                    const mark = isMonitored ? '☑ ' : '☐ ';
-                    const mItem = new PopupMenu.PopupMenuItem(`${mark}${pName} (${pInfo.active_count}/${pInfo.count})`);
-                    mItem.connect('activate', () => {
-                        this._toggleProvider('9router', pName);
-                    });
-                    provSubMenu.menu.addMenuItem(mItem);
-                }
-                this._contentSection.addMenuItem(provSubMenu);
-            }
-
-            this._contentSection.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+            this._contentSection.addMenuItem(r9Sub);
         }
 
         // ==================== OmniRoute Section ====================
         const om = data.omniroute || {};
         if (om.enabled) {
-            const title = new PopupMenu.PopupMenuItem(_('🔄 OmniRoute'), {
-                reactive: false,
-                style_class: 'ai-monitor-section-title',
-            });
-            if (theme.menu_section_color) {
-                title.label.set_style(`color: ${theme.menu_section_color};`);
+            if (om.status === 'ok') {
+                const omSub = new PopupMenu.PopupSubMenuMenuItem('');
+                this._styleSubmenuHeader(omSub, '🔄 OmniRoute', `${om.models_count} models`, theme);
+                for (const [pName, count] of Object.entries(om.filtered_providers || {})) {
+                    const row = new PopupMenu.PopupMenuItem(`${pName}: ${count} models`, { reactive: false, style_class: 'ai-monitor-item' });
+                    omSub.menu.addMenuItem(row);
+                }
+                this._contentSection.addMenuItem(omSub);
+            } else {
+                this._addStatusRow(this._contentSection, theme, {
+                    name: '🔄 OmniRoute',
+                    text: 'Offline',
+                    kind: 'muted',
+                });
             }
-            this._contentSection.addMenuItem(title);
-
-            const omStatus = om.status === 'ok' ? `Connected (${om.models_count} models)` : 'Offline (port 20128)';
-            const omItem = new PopupMenu.PopupMenuItem(
-                `  Status: ${omStatus}`,
-                { reactive: false, style_class: 'ai-monitor-item' }
-            );
-            this._contentSection.addMenuItem(omItem);
-
-            // Display monitored providers for OmniRoute
-            const omFiltered = om.filtered_providers || {};
-            for (const [pName, count] of Object.entries(omFiltered)) {
-                const pItem = new PopupMenu.PopupMenuItem(
-                    `  • ${pName}: ${count} models`,
-                    { reactive: false, style_class: 'ai-monitor-item' }
-                );
-                this._contentSection.addMenuItem(pItem);
-            }
-
-            this._contentSection.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
         }
 
         // ==================== Custom APIs ====================
-        const customList = data.custom_apis || [];
-        if (customList.length > 0) {
-            for (const cust of customList) {
-                const title = new PopupMenu.PopupMenuItem(`📡 ${cust.name}`, {
-                    reactive: false,
-                    style_class: 'ai-monitor-section-title',
+        for (const cust of data.custom_apis || []) {
+            if (cust.status === 'ok') {
+                this._addQuotaRow(this._contentSection, theme, {
+                    name: cust.name, usedPct: cust.used_pct, countdown: cust.countdown,
                 });
-                this._contentSection.addMenuItem(title);
-
-                if (cust.status === 'ok') {
-                    const u = cust.used_pct !== null && cust.used_pct !== undefined ? `${cust.used_pct}%` : 'N/A';
-                    const bar = cust.bar ? ` [${cust.bar}]` : '';
-                    const cd = cust.countdown ? ` · Reset: ${cust.countdown}` : '';
-                    const item = new PopupMenu.PopupMenuItem(
-                        `  Usage: ${u}${bar}${cd}`,
-                        { reactive: false, style_class: 'ai-monitor-item' }
-                    );
-                    this._contentSection.addMenuItem(item);
-                } else {
-                    const errItem = new PopupMenu.PopupMenuItem(
-                        `  Status: ${cust.error || 'Error'}`,
-                        { reactive: false, style_class: 'ai-monitor-item ai-monitor-val-err' }
-                    );
-                    this._contentSection.addMenuItem(errItem);
-                }
+            } else {
+                this._addStatusRow(this._contentSection, theme, {
+                    name: cust.name, text: cust.error || 'Error', kind: 'err',
+                });
             }
         }
+    }
+
+    /* ---------- row-building helpers ---------- */
+
+    _addSectionTitle(section, theme, text, summary) {
+        const row = new PopupMenu.PopupBaseMenuItem({ reactive: false, style_class: 'ai-sec' });
+        const title = new St.Label({ text });
+        title.set_style(`color: ${theme.menu_section_color || '#8ab4f8'}; font-weight: bold; font-size: 12px;`);
+        const right = summary ? new St.Label({ text: summary }) : null;
+        if (right)
+            right.set_style(`color: ${theme.menu_muted_color || '#9aa0a6'}; font-size: 11px;`);
+        this._rowTwoSides(row, title, right);
+        section.addMenuItem(row);
+    }
+
+    _addQuotaRow(section, theme, opts) {
+        // opts: { name, usedPct, countdown, resetTime, sub, invert }
+        // invert=true when usedPct actually holds a REMAINING percentage
+        const T = {
+            ok: theme.menu_ok_color || '#81c995',
+            warn: theme.menu_warn_color || '#fdd663',
+            err: theme.menu_err_color || '#f28b82',
+            muted: theme.menu_muted_color || '#9aa0a6',
+        };
+        const row = new PopupMenu.PopupBaseMenuItem({ reactive: false, style_class: 'ai-row' });
+
+        const leftBox = new St.BoxLayout({ vertical: true, x_expand: true });
+        const nameLbl = new St.Label({ text: opts.name });
+        nameLbl.set_style('font-size: 12px;');
+        leftBox.add_child(nameLbl);
+        if (opts.sub) {
+            const subLbl = new St.Label({ text: opts.sub });
+            subLbl.set_style(`color: ${T.muted}; font-size: 10.5px;`);
+            leftBox.add_child(subLbl);
+        }
+
+        const rightBox = new St.BoxLayout({ style: 'spacing: 8px;', y_align: Clutter.ActorAlign.CENTER });
+        const pct = opts.usedPct;
+        if (pct !== null && pct !== undefined) {
+            rightBox.add_child(this._barWidget(pct, T, opts.invert));
+            const valColor = opts.invert ? this._remColor(pct, T) : this._usedColor(pct, T);
+            const val = new St.Label({ text: `${Math.round(pct)}%` });
+            val.set_style(`color: ${valColor}; font-weight: bold; font-size: 12px;`);
+            rightBox.add_child(val);
+        }
+        if (opts.countdown) {
+            const chip = new St.Label({ text: `⏳ ${opts.countdown}` });
+            chip.set_style(`color: ${T.muted}; font-size: 11px;`);
+            rightBox.add_child(chip);
+        }
+
+        row.add_child(leftBox);
+        row.add_child(rightBox);
+        section.addMenuItem(row);
+    }
+
+    _addStatusRow(section, theme, opts) {
+        // opts: { name, text, kind: ok|warn|err|muted }
+        const T = {
+            ok: theme.menu_ok_color || '#81c995',
+            warn: theme.menu_warn_color || '#fdd663',
+            err: theme.menu_err_color || '#f28b82',
+            muted: theme.menu_muted_color || '#9aa0a6',
+        };
+        const row = new PopupMenu.PopupBaseMenuItem({ reactive: false, style_class: 'ai-row' });
+        const left = new St.Label({ text: opts.name });
+        left.set_style('font-size: 12px;');
+        const right = new St.Label({ text: opts.text });
+        right.set_style(`color: ${T[opts.kind] || T.muted}; font-size: 11.5px;`);
+        this._rowTwoSides(row, left, right);
+        section.addMenuItem(row);
+    }
+
+    _barWidget(pct, T, invert = false) {
+        // Slim horizontal bar: fill color follows threshold semantics
+        const width = 72;
+        const box = new St.BoxLayout({ style_class: 'ai-bar' });
+        const val = Math.max(0, Math.min(100, pct));
+        const fillW = Math.round((val / 100) * width);
+        const color = invert ? this._remColor(val, T) : this._usedColor(val, T);
+        const fill = new St.BoxLayout({
+            style: `width: ${fillW}px; background-color: ${color}; margin: 3px 0; border-radius: 2px;`,
+        });
+        const rest = new St.BoxLayout({
+            style: `width: ${width - fillW}px; background-color: ${T.muted}30; margin: 3px 0; border-radius: 2px;`,
+        });
+        box.add_child(fill);
+        box.add_child(rest);
+        return box;
+    }
+
+    _rowTwoSides(row, left, right) {
+        if (left) {
+            left.x_expand = true;
+            row.add_child(left);
+        }
+        if (right) {
+            right.y_align = Clutter.ActorAlign.CENTER;
+            row.add_child(right);
+        }
+    }
+
+    _styleSubmenuHeader(sub, title, rightTextOrMarkup, theme) {
+        // PopupSubMenuMenuItem renders its label; restyle it and add a right-side summary
+        sub.label.text = title;
+        sub.label.set_style('font-weight: bold; font-size: 12px;');
+        if (rightTextOrMarkup) {
+            const right = new St.Label({});
+            // Pango markup passthrough when the caller sends <span .../>
+            if (rightTextOrMarkup.includes('<'))
+                right.clutter_text.set_markup(rightTextOrMarkup);
+            else
+                right.text = rightTextOrMarkup;
+            right.y_align = Clutter.ActorAlign.CENTER;
+            sub.add_child(right);
+        }
+    }
+
+    _usedColor(pct, T) {
+        if (pct >= 90) return T.err;
+        if (pct >= 70) return T.warn;
+        return T.ok;
+    }
+
+    _remColor(pct, T) {
+        if (pct <= 10) return T.err;
+        if (pct <= 25) return T.warn;
+        return T.ok;
+    }
+
+    _pctText(pct, remaining = false) {
+        return pct !== null && pct !== undefined ? `${Math.round(pct)}%${remaining ? ' left' : ''}` : '—';
+    }
+
+    _toolLine(tool) {
+        if (!tool || tool.remaining === null || tool.remaining === undefined)
+            return null;
+        return `tools ${tool.current || 0}/${(tool.current || 0) + tool.remaining} used`;
     }
 
     destroy() {

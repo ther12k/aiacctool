@@ -1,10 +1,10 @@
+/* ===== Top bar ===== */
 .ai-monitor-panel-box {
-    spacing: 5px;
-    padding: 0 4px;
+    spacing: 6px;
 }
 
 .ai-monitor-icon {
-    icon-size: 15px;
+    icon-size: 16px;
 }
 
 .ai-monitor-label {
@@ -12,25 +12,41 @@
     font-size: 12px;
 }
 
+/* ===== Menu chrome ===== */
 .ai-monitor-header {
     font-weight: bold;
     font-size: 13px;
-    padding: 6px 12px;
+    padding: 6px 14px;
     color: #8ab4f8;
 }
 
 .ai-monitor-section-title {
     font-weight: bold;
     font-size: 12px;
-    padding: 6px 12px 2px 12px;
-    color: #e8eaed;
+    padding: 8px 14px 2px 14px;
 }
 
 .ai-monitor-item {
-    padding: 4px 12px;
+    padding: 3px 14px;
     font-size: 11.5px;
 }
 
+/* ===== Rich rows (new) ===== */
+.ai-sec {
+    padding: 10px 14px 2px 14px;
+    spacing: 8px;
+}
+
+.ai-row {
+    padding: 4px 14px;
+    spacing: 10px;
+}
+
+.ai-bar {
+    spacing: 0;
+}
+
+/* ===== Value colors (fallbacks; themes override inline) ===== */
 .ai-monitor-val-ok {
     color: #81c995;
     font-weight: bold;
@@ -49,9 +65,9 @@
 .ai-monitor-val-muted {
     color: #9aa0a6;
     font-size: 11px;
+    padding: 2px 14px;
 }
 
 .ai-monitor-theme-active {
     font-weight: bold;
-    color: #8ab4f8;
 }

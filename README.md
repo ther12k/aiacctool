@@ -30,33 +30,22 @@ Built natively for **GNOME Shell 46+** (Ubuntu 24.04+) with companion CLI and au
 
 ### Top Bar Indicator
 ```text
-[🛡] ⚡c 51%⌛3h 0m  ⚡o 100%⌛2h 4m  🌐62%
+[✦logo] ✦c 15%⌛4h17m · ✦o 80%⌛5m34s · 🕸️6↑
 ```
-- `⚡c 51%⌛3h 0m` — GLM account "claude": 51% used, resets in 3h
-- `⚡o 100%⌛2h 4m` — GLM account "opencode": exhausted, resets in 2h
-- `🌐62%` — grouped **average remaining** across all other providers (no time shown)
-- Status icon changes dynamically: green checkmark on healthy, warning icon when quota > 80% used.
+- `✦c 15%⌛4h17m` — Zhipu account "claude": 15% used, window resets in 4h17m
+- `✦o 80%⌛5m34s` — Zhipu account "opencode": 80% used, resets in 5m34s
+- `🕸️6↑` — grouped badge for other providers: 6 upstream accounts online (switches to an averaged `XX%` when Antigravity/Codex report quotas)
+- Status icon: Zhipu AI logo when healthy, warning icon when any quota crosses its threshold, offline icon otherwise.
 
 ### Rich Dropdown Menu (Click on Top Bar)
-- **⚡ GLM (Z.ai / BigModel)**
-  - Tokens used percentage and progress bar
-  - Web search & tool quota (used vs remaining)
-- **🌌 Google Antigravity (agy)**
-  - Claude Sonnet & Opus quota remaining + reset countdown
-  - Gemini 3.8 & Flash models quota remaining + reset countdown
-  - Submenu showing quota for all 33 available models
-  - Daemon connection info (`127.0.0.1:port`)
-- **🤖 OpenAI Codex**
-  - 5-hour primary window limit + reset countdown
-  - Weekly limit + reset countdown
-  - Account/subscription status
-- **🔀 9Router**
-  - Gateway status (Local or Remote online)
-  - Today's total requests and tokens routed
-- **🔄 OmniRoute**
-  - Gateway status and connected models
-- **📡 Custom APIs**
-  - Custom endpoint status, usage percentage, and countdowns
+The menu is organized as a compact status list — key numbers at a glance, details one click deep:
+- **Status line** — `● GLM 2/2 · 9Router 6↑` or `○ All providers offline`
+- **✦ GLM (Zhipu)** — one row per account with a real progress bar, threshold-colored percentage (green → amber → red), and a `⏳` reset chip; a muted sub-line shows tool quota. Exhausted accounts turn red instantly.
+- **🌌 Antigravity** — collapsible: Claude Sonnet / Gemini bars with reset chips, plus an "All models" nested list.
+- **🤖 Codex** — collapsible: 5-hour and weekly window bars; offline shows a one-line amber status.
+- **🔀 9Router** — header shows `6↑ of 19` accounts online; inside, today's request/token totals and a click-to-toggle provider checklist (`☑ glm 2/2`, `☐ nvidia 1/1`, …).
+- **🔄 OmniRoute / 📡 Custom APIs** — single status rows when offline; expand automatically when connected.
+- Percentages and bars use the active theme's ok/warn/error palette, so exhausted quotas pop visually in every theme.
 - **Quick Actions**:
   - 🔄 **Refresh Now**: Instantly re-query all APIs
   - 🎨 **Theme & Presets**: Switch themes live
