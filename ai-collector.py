@@ -46,7 +46,7 @@ THEME_PRESETS = {
         "menu_err_color": "#f28b82",
         "menu_muted_color": "#9aa0a6",
         "badge_icons": {
-            "glm": "⚡",
+            "glm": "✦",
             "antigravity": "🌌",
             "codex": "🤖",
             "nine_router": "🔀",
@@ -72,7 +72,7 @@ THEME_PRESETS = {
         "menu_err_color": "#f38ba8",      # Red
         "menu_muted_color": "#9399b2",
         "badge_icons": {
-            "glm": "⚡",
+            "glm": "✦",
             "antigravity": "🌸",
             "codex": "🐱",
             "nine_router": "🔀",
@@ -124,7 +124,7 @@ THEME_PRESETS = {
         "menu_err_color": "#ff5555",      # Red
         "menu_muted_color": "#6272a4",    # Comment
         "badge_icons": {
-            "glm": "⚡",
+            "glm": "✦",
             "antigravity": "🦇",
             "codex": "💀",
             "nine_router": "🩸",
@@ -150,7 +150,7 @@ THEME_PRESETS = {
         "menu_err_color": "#ff073a",      # Neon Red
         "menu_muted_color": "#708090",
         "badge_icons": {
-            "glm": "⚡",
+            "glm": "✦",
             "antigravity": "🪐",
             "codex": "👾",
             "nine_router": "🔀",
@@ -1007,6 +1007,17 @@ def generate_panel_summary(results, cfg, theme):
             parts.append(f"Others avg {avg:.0f}%")
         elif p_format == "full":
             parts.append(f"Others (avg of {len(group_remaining)}): {avg:.0f}% left")
+    elif r9.get("enabled") and (r9.get("remote_running") or r9.get("local_running")):
+        # Fallback when no quota-bearing provider is live: show how many
+        # upstream accounts across the monitored providers are online.
+        online = sum(p.get("active_count", 0) for p in (r9.get("filtered_providers") or {}).values())
+        if online > 0:
+            if p_format == "compact":
+                parts.append(f"{b_grp}{online}↑")
+            elif p_format == "standard":
+                parts.append(f"Others {online} online")
+            elif p_format == "full":
+                parts.append(f"Others: {online} upstream accounts online (no quota data)")
 
     badge_text = " ".join(parts) if parts else ("AI Monitor" if has_ok else "AI Offline")
     icon = theme.get("icon_warn") if has_warning else (theme.get("icon_ok") if has_ok else theme.get("icon_err"))

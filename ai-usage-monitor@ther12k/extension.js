@@ -309,9 +309,28 @@ class AIIndicator extends PanelMenu.Button {
         // 2. Update Icon & Visibility
         if (summary.show_icon !== false) {
             this._icon.visible = true;
-            this._icon.icon_name = summary.icon || 'emblem-default-symbolic';
-            if (theme.topbar_color) {
-                this._icon.set_style(`color: ${theme.topbar_color};`);
+            const logoPath = GLib.build_filenamev([this._extension.path, 'zhipu-logo.png']);
+            const hasLogo = GLib.file_test(logoPath, GLib.FileTest.EXISTS);
+
+            if (!summary.has_ok) {
+                // Everything offline: keep the offline symbolic icon
+                this._icon.gicon = null;
+                this._icon.icon_name = summary.icon || 'network-offline-symbolic';
+                this._icon.set_style('');
+            } else if (summary.has_warning) {
+                // Warning state stays highly visible with the symbolic icon
+                this._icon.gicon = null;
+                this._icon.icon_name = summary.icon || 'dialog-warning-symbolic';
+                this._icon.set_style('');
+            } else if (hasLogo) {
+                // Healthy: show the Zhipu AI (Z.ai) brand logo
+                this._icon.icon_name = null;
+                this._icon.gicon = Gio.FileIcon.new(Gio.File.new_for_path(logoPath));
+                this._icon.set_style('icon-size: 16px;');
+            } else {
+                this._icon.gicon = null;
+                this._icon.icon_name = summary.icon || 'emblem-default-symbolic';
+                this._icon.set_style('');
             }
         } else {
             this._icon.visible = false;
