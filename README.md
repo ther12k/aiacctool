@@ -18,6 +18,8 @@ Built natively for **GNOME Shell 46+** (Ubuntu 24.04+) with companion CLI and au
   - **9Router**: Monitors local/remote router activity, today's request count, and token volume.
   - **OmniRoute**: Monitors local or remote OmniRoute server health and active model pool.
   - **Custom APIs & OpenRouter**: Easily configure custom API endpoints with token authentication and JSON response path extraction.
+- **Live Countdown Ticker**: reset countdowns in the top bar and open menu tick every second (rendered from raw timestamps, never stale between polls).
+- **Quota Alerts**: desktop notifications fire the moment a Zhipu account is exhausted (≥95%), recovers, or Antigravity/Codex drops — toggleable in ⚙️ Settings.
 - **Themes & Custom Appearance**: Choose from 6 curated themes (**Catppuccin Mocha**, **Nord Frost**, **Dracula Vampire**, **Cyberpunk Neon**, **Minimal Monochrome**, and **Default Cyber**) or customize colors, fonts, and icons directly.
 - **Theme Switcher**: Switch themes on the fly via the top-bar dropdown menu or the CLI (`aiacctool theme set catppuccin`).
 - **Multi-Account GLM**: Auto-discovers **all** your Z.ai keys (Claude Code settings, OpenCode auth, env vars) and shows **each account separately** in the top bar with its own usage % and reset countdown (e.g. `⚡c 51%⌛3h  ⚡o 100%⌛2h`).
@@ -36,6 +38,7 @@ Built natively for **GNOME Shell 46+** (Ubuntu 24.04+) with companion CLI and au
 - `✦o 80%⌛5m34s` — Zhipu account "opencode": 80% used, resets in 5m34s
 - `🕸️6↑` — grouped badge for other providers: 6 upstream accounts online (switches to an averaged `XX%` when Antigravity/Codex report quotas)
 - Status icon: Zhipu AI logo when healthy, warning icon when any quota crosses its threshold, offline icon otherwise.
+- `panel_format: minimal` renders the ultra-compact form `✦16·22 · 🕸️6↑` (no countdowns).
 
 ### Rich Dropdown Menu (Click on Top Bar)
 The menu is organized as a compact status list — key numbers at a glance, details one click deep:
@@ -49,7 +52,7 @@ The menu is organized as a compact status list — key numbers at a glance, deta
 - **Quick Actions**:
   - 🔄 **Refresh Now**: Instantly re-query all APIs
   - 🎨 **Theme & Presets**: Switch themes live
-  - ⚙️ **Settings**: Toggle the status icon, reset countdown, badge format, panel position, and refresh interval — all persisted to `config.json`, no editor required
+  - ⚙️ **Settings**: Toggle the status icon, reset countdown, quota alerts, badge format, panel position, and refresh interval — all persisted to `config.json`, no editor required
   - 🌐 **Open 9Router Dashboard**: Launch local/remote router web UI
   - ⚡ **Open Z.ai Console**: Manage API keys
   - 📝 **Edit config.json**: Opens the config in a text editor (not the browser)
