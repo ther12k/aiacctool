@@ -195,6 +195,7 @@ DEFAULT_CONFIG = {
     "panel_format": "compact",   # "compact", "standard", "full", "minimal"
     "show_reset_in_topbar": True,
     "show_icon": True,
+    "show_alerts": True,
     "appearance": {
         "topbar_color": "",
         "topbar_font_size": "",
@@ -645,6 +646,7 @@ def check_codex(cfg):
                     "used_pct": p_used,
                     "remaining_pct": (100 - p_used) if p_used is not None else None,
                     "bar": make_ascii_bar(p_used),
+                    "reset_ms": p_reset_ms,
                     "countdown": format_countdown_ms(p_reset_ms),
                     "reset_time": format_local_time_ms(p_reset_ms)
                 },
@@ -652,6 +654,7 @@ def check_codex(cfg):
                     "used_pct": s_used,
                     "remaining_pct": (100 - s_used) if s_used is not None else None,
                     "bar": make_ascii_bar(s_used),
+                    "reset_ms": s_reset_ms,
                     "countdown": format_countdown_ms(s_reset_ms),
                     "reset_time": format_local_time_ms(s_reset_ms)
                 }
@@ -939,15 +942,19 @@ def generate_panel_summary(results, cfg, theme):
     b_grp = badges.get("group", "🌐")
     b_rst = badges.get("reset", "⏳")
 
-    parts = []
+    parts = []        # final rendered segments
+    tmpl_parts = []   # segments with {glmN} placeholders for live ticking in JS
+    cd_vars = {}      # placeholder -> reset epoch ms
     has_warning = False
     has_ok = False
 
     # 1. GLM — one badge per account, each with reset countdown
     glm = results.get("glm", {})
+    glm_used_min = []
     if glm.get("enabled"):
         accounts = glm.get("accounts", [])
         multi = len([a for a in accounts if a.get("status") == "ok"]) > 1
+        gi = 0
         for acc in accounts:
             if acc.get("status") != "ok":
                 continue
@@ -955,20 +962,40 @@ def generate_panel_summary(results, cfg, theme):
             tok = acc.get("token_quota", {})
             used = tok.get("used_pct")
             cd = tok.get("countdown")
+            reset_ms = tok.get("reset_ms")
             if used is None:
                 continue
             if used >= 90:
                 has_warning = True
             tag = f"{acc.get('short', '')} " if multi else ""
+            key = f"glm{gi}"
+            gi += 1
             cd_c = (cd or "").replace(" ", "")
-            cd_str = f"{b_rst}{cd_c}" if (show_reset and cd_c) else ""
+            if show_reset and cd_c and reset_ms:
+                cd_vars[key] = reset_ms
+                ph = "{" + key + "}"
+                render_cd = f"{b_rst}{cd_c}"
+                tmpl_cd = f"{b_rst}{ph}"
+            else:
+                render_cd = tmpl_cd = ""
+
+            nm = acc.get("name", "glm")
             if p_format == "compact":
-                parts.append(f"{b_glm}{tag}{used}%{cd_str}")
+                parts.append(f"{b_glm}{tag}{used}%{render_cd}")
+                tmpl_parts.append(f"{b_glm}{tag}{used}%{tmpl_cd}")
             elif p_format == "standard":
-                nm = acc.get("name", "glm")
-                parts.append(f"GLM-{nm} {used}%" + (f" ({cd})" if (show_reset and cd) else ""))
+                parts.append(f"GLM-{nm} {used}%{render_cd and f' ({cd})'}".rstrip())
+                tmpl_parts.append(f"GLM-{nm} {used}%{tmpl_cd and f' ({ph})'}".rstrip())
             elif p_format == "full":
-                parts.append(f"GLM[{acc.get('name', 'acct')}]: {used}% used{(' · ' + cd) if (show_reset and cd) else ''}")
+                parts.append(f"GLM[{nm}]: {used}% used{render_cd and ' · ' + cd}")
+                tmpl_parts.append(f"GLM[{nm}]: {used}% used{tmpl_cd and ' · ' + ph}")
+            else:  # minimal
+                glm_used_min.append(f"{used:.0f}")
+
+        if p_format == "minimal" and glm_used_min:
+            seg = b_glm + "·".join(glm_used_min)
+            parts.append(seg)
+            tmpl_parts.append(seg)
 
     # 2. Grouped average for all other providers (no time-left shown)
     group_remaining = []
@@ -1002,29 +1029,36 @@ def generate_panel_summary(results, cfg, theme):
 
     if group_remaining:
         avg = sum(group_remaining) / len(group_remaining)
-        if p_format == "compact":
-            parts.append(f"{b_grp}{avg:.0f}%")
+        if p_format == "compact" or p_format == "minimal":
+            seg = f"{b_grp}{avg:.0f}%"
         elif p_format == "standard":
-            parts.append(f"Others avg {avg:.0f}%")
-        elif p_format == "full":
-            parts.append(f"Others (avg of {len(group_remaining)}): {avg:.0f}% left")
+            seg = f"Others avg {avg:.0f}%"
+        else:
+            seg = f"Others (avg of {len(group_remaining)}): {avg:.0f}% left"
+        parts.append(seg)
+        tmpl_parts.append(seg)
     elif r9.get("enabled") and (r9.get("remote_running") or r9.get("local_running")):
         # Fallback when no quota-bearing provider is live: show how many
         # upstream accounts across the monitored providers are online.
         online = sum(p.get("active_count", 0) for p in (r9.get("filtered_providers") or {}).values())
         if online > 0:
-            if p_format == "compact":
-                parts.append(f"{b_grp}{online}↑")
+            if p_format == "compact" or p_format == "minimal":
+                seg = f"{b_grp}{online}↑"
             elif p_format == "standard":
-                parts.append(f"Others {online} online")
-            elif p_format == "full":
-                parts.append(f"Others: {online} upstream accounts online (no quota data)")
+                seg = f"Others {online} online"
+            else:
+                seg = f"Others: {online} upstream accounts online (no quota data)"
+            parts.append(seg)
+            tmpl_parts.append(seg)
 
     badge_text = " · ".join(parts) if parts else ("AI Monitor" if has_ok else "AI Offline")
+    template = " · ".join(tmpl_parts) if tmpl_parts else badge_text
     icon = theme.get("icon_warn") if has_warning else (theme.get("icon_ok") if has_ok else theme.get("icon_err"))
 
     return {
         "text": badge_text,
+        "template": template,
+        "template_vars": cd_vars,
         "icon": icon,
         "show_icon": cfg.get("show_icon", True),
         "panel_position": cfg.get("panel_position", "center"),
@@ -1045,6 +1079,7 @@ def collect_all():
             "panel_format": cfg.get("panel_format", "compact"),
             "panel_position": cfg.get("panel_position", "center"),
             "show_icon": cfg.get("show_icon", True),
+            "show_alerts": cfg.get("show_alerts", True),
             "show_reset_in_topbar": cfg.get("show_reset_in_topbar", True),
             "poll_interval_sec": cfg.get("poll_interval_sec", 30),
         },
@@ -1096,11 +1131,11 @@ def set_option(key, value):
     Sets a UI/behavior option in config.json from the menu or CLI.
     Accepts booleans as 'true'/'false', ints as digits, everything else verbatim.
     """
-    bool_keys = {"show_icon", "show_reset_in_topbar"}
+    bool_keys = {"show_icon", "show_reset_in_topbar", "show_alerts"}
     int_keys = {"poll_interval_sec"}
 
     if key not in {"theme", "panel_format", "panel_position", "poll_interval_sec",
-                   "show_reset_in_topbar", "show_icon"}:
+                   "show_reset_in_topbar", "show_icon", "show_alerts"}:
         return False, f"Unknown option '{key}'"
 
     if key in bool_keys:
@@ -1115,13 +1150,6 @@ def set_option(key, value):
     cfg[key] = value
     save_config(cfg)
     return True, f"{key} = {value}"
-
-
-def toggle_provider_account(router_type, provider_name, account):
-    """
-    Not yet used; placeholder for per-account filtering.
-    """
-    return False, "Not implemented"
 
 
 def main():

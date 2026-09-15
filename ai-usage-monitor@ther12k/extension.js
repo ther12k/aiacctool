@@ -44,10 +44,66 @@ class AIIndicator extends PanelMenu.Button {
         // Build Dropdown Menu
         this._buildMenu();
 
+        // Live countdown state (ticked every second)
+        this._chips = [];          // menu countdown chips
+        this._alertState = null;   // last seen alert snapshot
+
         // Start Periodic Polling (every 30 seconds)
         this._pollTimerId = null;
         this._refreshData();
         this._startPolling(30);
+        this._startTicker();
+    }
+
+    _startTicker() {
+        if (this._tickId)
+            GLib.source_remove(this._tickId);
+        // Re-render countdowns (badge + open menu chips) every second
+        this._tickId = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 1, () => {
+            this._renderBadge();
+            this._updateChips();
+            return GLib.SOURCE_CONTINUE;
+        });
+    }
+
+    _fmtCountdown(ms, compact = false) {
+        if (ms === null || ms === undefined)
+            return '';
+        const diff = Math.max(0, Math.floor(ms - Date.now()));
+        if (diff <= 1000)
+            return 'Resetting';
+        const h = Math.floor(diff / 3.6e6);
+        const m = Math.floor((diff % 3.6e6) / 6e4);
+        const s = Math.floor((diff % 6e4) / 1e3);
+        if (h > 0)
+            return compact ? `${h}h${m}m` : `${h}h ${m}m`;
+        if (m > 0)
+            return compact ? `${m}m${s}s` : `${m}m ${s}s`;
+        return `${s}s`;
+    }
+
+    _isoToMs(iso) {
+        if (!iso)
+            return null;
+        const t = Date.parse(iso);
+        return isNaN(t) ? null : t;
+    }
+
+    _renderBadge() {
+        const s = (this._lastData && this._lastData.summary) || {};
+        let text = s.template || s.text || '';
+        if (s.template && s.template_vars) {
+            for (const [k, ms] of Object.entries(s.template_vars))
+                text = text.split(`{${k}}`).join(this._fmtCountdown(ms, true));
+        }
+        this._label.text = text || _('AI Monitor');
+    }
+
+    _updateChips() {
+        for (const c of this._chips || []) {
+            const ms = c.iso ? this._isoToMs(c.iso) : c.ms;
+            c.label.text = `⏳ ${this._fmtCountdown(ms)}`;
+        }
     }
 
     _buildMenu() {
@@ -127,6 +183,12 @@ class AIIndicator extends PanelMenu.Button {
             this._setOption('show_reset_in_topbar', state);
         });
         this._settingsSubMenu.menu.addMenuItem(resetSwitch);
+
+        const alertSwitch = new PopupMenu.PopupSwitchMenuItem(_('Quota alerts (notifications)'), opts.show_alerts !== false);
+        alertSwitch.connect('toggled', (item, state) => {
+            this._setOption('show_alerts', state);
+        });
+        this._settingsSubMenu.menu.addMenuItem(alertSwitch);
 
         this._settingsSubMenu.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
@@ -233,6 +295,7 @@ class AIIndicator extends PanelMenu.Button {
             proc.communicate_utf8_async(null, null, (obj, res) => {
                 this._refreshData();
             });
+            this.menu.open(); // keep menu open while the theme applies
         } catch (e) {
             log(`[AI Monitor] Error switching theme: ${e}`);
         }
@@ -248,6 +311,7 @@ class AIIndicator extends PanelMenu.Button {
             proc.communicate_utf8_async(null, null, (obj, res) => {
                 this._refreshData();
             });
+            this.menu.open(); // keep menu open for rapid multi-toggle
         } catch (e) {
             log(`[AI Monitor] Error toggling provider: ${e}`);
         }
@@ -296,8 +360,8 @@ class AIIndicator extends PanelMenu.Button {
         const theme = data.theme || {};
         const summary = data.summary || {};
 
-        // 1. Update Top Bar Label & Style
-        this._label.text = summary.text || _('AI Monitor');
+        // 1. Update Top Bar Label & Style (live countdowns re-render every second)
+        this._renderBadge();
 
         // Apply theme font, size, weight, and color
         let styleStr = '';
@@ -360,6 +424,7 @@ class AIIndicator extends PanelMenu.Button {
 
         // 4. Re-populate Menu Content Section
         this._contentSection.removeAll();
+        this._chips = [];
 
         const T = {
             ok: theme.menu_ok_color || '#81c995',
@@ -413,7 +478,7 @@ class AIIndicator extends PanelMenu.Button {
                     this._addQuotaRow(this._contentSection, theme, {
                         name: acc.name,
                         usedPct: tok.used_pct,
-                        countdown: tok.countdown,
+                        countdown: tok.countdown, resetMs: tok.reset_ms,
                         resetTime: tok.reset_time,
                         sub: this._toolLine(acc.tool_quota),
                     });
@@ -438,11 +503,11 @@ class AIIndicator extends PanelMenu.Button {
                 const gemini = ag.gemini || {};
                 this._addQuotaRow(agSub.menu, theme, {
                     name: 'Claude Sonnet', usedPct: sonnet.used_pct,
-                    countdown: sonnet.countdown, resetTime: sonnet.reset_time, invert: true,
+                    countdown: sonnet.countdown, resetTime: sonnet.reset_time, resetIso: sonnet.reset_iso, invert: true,
                 });
                 this._addQuotaRow(agSub.menu, theme, {
                     name: 'Gemini', usedPct: gemini.used_pct,
-                    countdown: gemini.countdown, resetTime: gemini.reset_time, invert: true,
+                    countdown: gemini.countdown, resetTime: gemini.reset_time, resetIso: gemini.reset_iso, invert: true,
                 });
                 if (ag.models && Object.keys(ag.models).length > 0) {
                     const modelsSub = new PopupMenu.PopupSubMenuMenuItem(`All models (${ag.models_count})`);
@@ -478,11 +543,11 @@ class AIIndicator extends PanelMenu.Button {
                 this._styleSubmenuHeader(cdSub, '🤖 Codex', this._pctText(p.used_pct), theme);
                 this._addQuotaRow(cdSub.menu, theme, {
                     name: '5-hour window', usedPct: p.used_pct,
-                    countdown: p.countdown, resetTime: p.reset_time,
+                    countdown: p.countdown, resetTime: p.reset_time, resetMs: p.reset_ms,
                 });
                 this._addQuotaRow(cdSub.menu, theme, {
                     name: 'Weekly', usedPct: s.used_pct,
-                    countdown: s.countdown, resetTime: s.reset_time,
+                    countdown: s.countdown, resetTime: s.reset_time, resetMs: s.reset_ms,
                 });
                 this._contentSection.addMenuItem(cdSub);
             } else {
@@ -567,6 +632,77 @@ class AIIndicator extends PanelMenu.Button {
                 });
             }
         }
+
+        // 5. Threshold-crossing alerts (notifications)
+        this._checkAlerts(data);
+    }
+
+    _checkAlerts(data) {
+        if (!(data.ui_options || {}).show_alerts) {
+            this._alertState = null;
+            return;
+        }
+        const snap = this._snapshotAlerts(data);
+        if (!this._alertState) {
+            this._alertState = snap;  // seed silently on first poll
+            return;
+        }
+        const headlines = [];
+        const details = [];
+        for (const [key, state] of Object.entries(snap)) {
+            const prev = this._alertState[key];
+            if (prev === state)
+                continue;
+            const name = key.split(':', 2)[1];
+            if (state === 'exhausted') {
+                headlines.push(`\u2726 ${name} quota exhausted`);
+                const ms = (this._alertTimers || {})[key];
+                if (ms)
+                    details.push(`${name} resets in ${this._fmtCountdown(ms)}`);
+            } else if (state === 'ok' && prev === 'exhausted') {
+                headlines.push(`\u2726 ${name} quota restored`);
+            } else if (state === 'offline' && prev === 'ok') {
+                headlines.push(`${name} went offline`);
+            } else if (state === 'payment' && prev === 'ok') {
+                headlines.push('Codex plan inactive');
+            }
+        }
+        this._alertState = snap;
+        if (headlines.length > 0) {
+            const title = headlines.length === 1 ? headlines[0] : `${headlines.length} quota events`;
+            const body = headlines.join('\n') + (details.length ? '\n' + details.join('\n') : '');
+            try {
+                Main.notify(`AI Monitor \u2014 ${title}`, body);
+            } catch (e) {
+                log(`[AI Monitor] notify failed: ${e}`);
+            }
+        }
+    }
+
+    _snapshotAlerts(data) {
+        const snap = {};
+        const timers = {};
+        for (const acc of ((data.glm || {}).accounts || [])) {
+            if (acc.status !== 'ok')
+                continue;
+            const tok = acc.token_quota || {};
+            if (tok.used_pct === null || tok.used_pct === undefined)
+                continue;
+            snap[`glm:${acc.name}`] = tok.used_pct >= 95 ? 'exhausted' : 'ok';
+            timers[`glm:${acc.name}`] = tok.reset_ms;
+        }
+        const ag = data.antigravity || {};
+        if (ag.enabled)
+            snap['agy:Antigravity'] = ag.status === 'ok' ? 'ok' : 'offline';
+        const codex = data.codex || {};
+        if (codex.enabled) {
+            if (codex.status === 'ok')
+                snap['codex:Codex'] = 'ok';
+            else if (codex.status === 'payment_required')
+                snap['codex:Codex'] = 'payment';
+        }
+        this._alertTimers = timers;
+        return snap;
     }
 
     /* ---------- row-building helpers ---------- */
@@ -583,7 +719,7 @@ class AIIndicator extends PanelMenu.Button {
     }
 
     _addQuotaRow(section, theme, opts) {
-        // opts: { name, usedPct, countdown, resetTime, sub, invert }
+        // opts: { name, usedPct, countdown, resetTime, resetMs, resetIso, sub, invert }
         // invert=true when usedPct actually holds a REMAINING percentage
         const T = {
             ok: theme.menu_ok_color || '#81c995',
@@ -612,10 +748,15 @@ class AIIndicator extends PanelMenu.Button {
             val.set_style(`color: ${valColor}; font-weight: bold; font-size: 12px;`);
             rightBox.add_child(val);
         }
-        if (opts.countdown) {
-            const chip = new St.Label({ text: `⏳ ${opts.countdown}` });
+        const liveMs = opts.resetMs !== null && opts.resetMs !== undefined
+            ? opts.resetMs
+            : (opts.resetIso ? this._isoToMs(opts.resetIso) : null);
+        if (opts.countdown || liveMs) {
+            const chip = new St.Label({ text: `⏳ ${opts.countdown || ''}` });
             chip.set_style(`color: ${T.muted}; font-size: 11px;`);
             rightBox.add_child(chip);
+            if (liveMs)
+                this._chips.push({ label: chip, ms: liveMs, iso: opts.resetIso || null });
         }
 
         row.add_child(leftBox);
@@ -651,7 +792,7 @@ class AIIndicator extends PanelMenu.Button {
             style: `width: ${fillW}px; background-color: ${color}; margin: 3px 0; border-radius: 2px;`,
         });
         const rest = new St.BoxLayout({
-            style: `width: ${width - fillW}px; background-color: ${T.muted}30; margin: 3px 0; border-radius: 2px;`,
+            style: `width: ${width - fillW}px; background-color: rgba(255,255,255,0.14); margin: 3px 0; border-radius: 2px;`,
         });
         box.add_child(fill);
         box.add_child(rest);
@@ -711,6 +852,10 @@ class AIIndicator extends PanelMenu.Button {
         if (this._pollTimerId) {
             GLib.source_remove(this._pollTimerId);
             this._pollTimerId = null;
+        }
+        if (this._tickId) {
+            GLib.source_remove(this._tickId);
+            this._tickId = null;
         }
         super.destroy();
     }
