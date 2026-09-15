@@ -469,7 +469,8 @@ class AIIndicator extends PanelMenu.Button {
                 ? glm.accounts
                 : [{name: 'main', status: glm.status, token_quota: glm.token_quota, tool_quota: glm.tool_quota, error: glm.error}];
 
-            const exhausted = accounts.filter(a => a.status === 'ok' && (a.token_quota || {}).used_pct >= 95).length;
+            const th = this._thresholds();
+            const exhausted = accounts.filter(a => a.status === 'ok' && (a.token_quota || {}).used_pct >= th.exhaust).length;
             this._addSectionTitle(this._contentSection, theme, '✦ GLM (Zhipu)', `${accounts.length} account${accounts.length > 1 ? 's' : ''}${exhausted ? ` · ${exhausted} exhausted` : ''}`);
 
             for (const acc of accounts) {
@@ -590,10 +591,24 @@ class AIIndicator extends PanelMenu.Button {
                 const tot = pInfo.count || 0;
                 const mark = monitored ? '☑' : '☐';
                 const mItem = new PopupMenu.PopupMenuItem('');
-                const left = new St.Label({ text: `${mark} ${pName}` });
+                const leftBox = new St.BoxLayout({ vertical: true, x_expand: true });
+                const nameRow = new St.Label({ text: `${mark} ${pName}` });
+                leftBox.add_child(nameRow);
+                const details = pInfo.accounts_detail || [];
+                const badAccounts = details.filter(a => !a.active || a.error);
+                if (badAccounts.length > 0 && details.length <= 4) {
+                    for (const a of badAccounts.slice(0, 2)) {
+                        const errLine = a.error ? ` — ${a.error.split('\n')[0].slice(0, 48)}` : '';
+                        const dLbl = new St.Label({ text: `    ${a.active ? '●' : '○'} ${a.name}${errLine}` });
+                        dLbl.set_style(`color: ${a.active ? T.warn : T.err}; font-size: 10.5px;`);
+                        leftBox.add_child(dLbl);
+                    }
+                }
                 const right = new St.Label({ text: `${act}/${tot}` });
                 right.set_style(`color: ${act > 0 ? T.ok : T.err};`);
-                this._rowTwoSides(mItem, left, right, monitored);
+                right.y_align = Clutter.ActorAlign.CENTER;
+                mItem.add_child(leftBox);
+                mItem.add_child(right);
                 mItem.connect('activate', () => this._toggleProvider('9router', pName));
                 r9Sub.menu.addMenuItem(mItem);
             }
@@ -616,6 +631,34 @@ class AIIndicator extends PanelMenu.Button {
                     name: '🔄 OmniRoute',
                     text: 'Offline',
                     kind: 'muted',
+                });
+            }
+        }
+
+        // ==================== OpenRouter Section ====================
+        const or = data.openrouter || {};
+        if (or.enabled && or.status !== 'disabled') {
+            if (or.status === 'ok') {
+                let right;
+                if (or.limit_usd !== null && or.limit_usd !== undefined) {
+                    const pctLeft = or.limit_usd > 0 ? ((or.limit_usd - (or.usage_usd || 0)) / or.limit_usd) * 100 : 100;
+                    right = `<span foreground="${this._remColor(pctLeft, T)}">$${(or.usage_usd || 0).toFixed(2)} / $${or.limit_usd.toFixed(2)}</span>`;
+                } else {
+                    right = `<span foreground="${T.ok}">$${(or.usage_usd || 0).toFixed(2)} used</span>`;
+                }
+                const orSub = new PopupMenu.PopupSubMenuMenuItem('');
+                this._styleSubmenuHeader(orSub, '🌐 OpenRouter', right, theme);
+                const lbl = new PopupMenu.PopupMenuItem(
+                    `${or.label || 'Key'}${or.is_free_tier ? ' · free tier' : ' · pay-as-you-go'}`,
+                    { reactive: false, style_class: 'ai-monitor-item' }
+                );
+                orSub.menu.addMenuItem(lbl);
+                this._contentSection.addMenuItem(orSub);
+            } else {
+                this._addStatusRow(this._contentSection, theme, {
+                    name: '🌐 OpenRouter',
+                    text: or.error || or.status,
+                    kind: or.status === 'not_configured' ? 'muted' : 'err',
                 });
             }
         }
@@ -688,7 +731,7 @@ class AIIndicator extends PanelMenu.Button {
             const tok = acc.token_quota || {};
             if (tok.used_pct === null || tok.used_pct === undefined)
                 continue;
-            snap[`glm:${acc.name}`] = tok.used_pct >= 95 ? 'exhausted' : 'ok';
+            snap[`glm:${acc.name}`] = tok.used_pct >= this._thresholds().exhaust ? 'exhausted' : 'ok';
             timers[`glm:${acc.name}`] = tok.reset_ms;
         }
         const ag = data.antigravity || {};
@@ -826,15 +869,25 @@ class AIIndicator extends PanelMenu.Button {
         }
     }
 
+    _thresholds() {
+        const o = (this._lastData && this._lastData.ui_options) || {};
+        return {
+            warn: o.alert_warn_pct !== undefined ? o.alert_warn_pct : 85,
+            exhaust: o.alert_exhaust_pct !== undefined ? o.alert_exhaust_pct : 95,
+        };
+    }
+
     _usedColor(pct, T) {
-        if (pct >= 90) return T.err;
-        if (pct >= 70) return T.warn;
+        const th = this._thresholds();
+        if (pct >= th.exhaust) return T.err;
+        if (pct >= th.warn - 15) return T.warn;
         return T.ok;
     }
 
     _remColor(pct, T) {
-        if (pct <= 10) return T.err;
-        if (pct <= 25) return T.warn;
+        const th = this._thresholds();
+        if (pct <= 100 - th.exhaust) return T.err;
+        if (pct <= 100 - th.warn + 15) return T.warn;
         return T.ok;
     }
 

@@ -19,7 +19,9 @@ Built natively for **GNOME Shell 46+** (Ubuntu 24.04+) with companion CLI and au
   - **OmniRoute**: Monitors local or remote OmniRoute server health and active model pool.
   - **Custom APIs & OpenRouter**: Easily configure custom API endpoints with token authentication and JSON response path extraction.
 - **Live Countdown Ticker**: reset countdowns in the top bar and open menu tick every second (rendered from raw timestamps, never stale between polls).
-- **Quota Alerts**: desktop notifications fire the moment a Zhipu account is exhausted (≥95%), recovers, or Antigravity/Codex drops — toggleable in ⚙️ Settings.
+- **Quota Alerts**: desktop notifications fire the moment a Zhipu account is exhausted, recovers, or Antigravity/Codex drops — toggleable in ⚙️ Settings, with configurable thresholds (`alert_exhaust_pct`, `alert_warn_pct`).
+- **OpenRouter**: enable it in config with your API key to track credit usage/limit right in the menu.
+- **9Router account health**: the provider checklist shows per-account status dots with the last error (e.g. `[402] You have reached the limit.`) under any failing account.
 - **Themes & Custom Appearance**: Choose from 6 curated themes (**Catppuccin Mocha**, **Nord Frost**, **Dracula Vampire**, **Cyberpunk Neon**, **Minimal Monochrome**, and **Default Cyber**) or customize colors, fonts, and icons directly.
 - **Theme Switcher**: Switch themes on the fly via the top-bar dropdown menu or the CLI (`aiacctool theme set catppuccin`).
 - **Multi-Account GLM**: Auto-discovers **all** your Z.ai keys (Claude Code settings, OpenCode auth, env vars) and shows **each account separately** in the top bar with its own usage % and reset countdown (e.g. `⚡c 51%⌛3h  ⚡o 100%⌛2h`).

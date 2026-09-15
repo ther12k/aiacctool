@@ -196,6 +196,8 @@ DEFAULT_CONFIG = {
     "show_reset_in_topbar": True,
     "show_icon": True,
     "show_alerts": True,
+    "alert_exhaust_pct": 95,
+    "alert_warn_pct": 85,
     "appearance": {
         "topbar_color": "",
         "topbar_font_size": "",
@@ -724,6 +726,12 @@ def discover_router_providers():
         acc = c.get('name') or c.get('email')
         if acc and acc not in grouped[p]['accounts']:
             grouped[p]['accounts'].append(acc)
+        detail = {
+            'name': acc or '(unnamed)',
+            'active': bool(c.get('active')),
+            'error': (c.get('lastError') or '')[:120] or None,
+        }
+        grouped[p].setdefault('accounts_detail', []).append(detail)
         if c.get('lastError'):
             grouped[p]['has_error'] = True
 
@@ -965,7 +973,7 @@ def generate_panel_summary(results, cfg, theme):
             reset_ms = tok.get("reset_ms")
             if used is None:
                 continue
-            if used >= 90:
+            if used >= int(cfg.get("alert_warn_pct", 85)):
                 has_warning = True
             tag = f"{acc.get('short', '')} " if multi else ""
             key = f"glm{gi}"
@@ -1007,7 +1015,7 @@ def generate_panel_summary(results, cfg, theme):
             rem = (ag.get(key) or {}).get("remaining_pct")
             if rem is not None:
                 group_remaining.append(rem)
-                if rem <= 20:
+                if rem <= (100 - int(cfg.get("alert_warn_pct", 85))):
                     has_warning = True
 
     codex = results.get("codex", {})
@@ -1016,7 +1024,7 @@ def generate_panel_summary(results, cfg, theme):
         u = (codex.get("primary_window") or {}).get("used_pct")
         if u is not None:
             group_remaining.append(100 - u)
-            if u >= 90:
+            if u >= int(cfg.get("alert_warn_pct", 85)):
                 has_warning = True
 
     for cust in results.get("custom_apis", []):
@@ -1080,6 +1088,8 @@ def collect_all():
             "panel_position": cfg.get("panel_position", "center"),
             "show_icon": cfg.get("show_icon", True),
             "show_alerts": cfg.get("show_alerts", True),
+            "alert_exhaust_pct": int(cfg.get("alert_exhaust_pct", 95)),
+            "alert_warn_pct": int(cfg.get("alert_warn_pct", 85)),
             "show_reset_in_topbar": cfg.get("show_reset_in_topbar", True),
             "poll_interval_sec": cfg.get("poll_interval_sec", 30),
         },
@@ -1132,10 +1142,11 @@ def set_option(key, value):
     Accepts booleans as 'true'/'false', ints as digits, everything else verbatim.
     """
     bool_keys = {"show_icon", "show_reset_in_topbar", "show_alerts"}
-    int_keys = {"poll_interval_sec"}
+    int_keys = {"poll_interval_sec", "alert_exhaust_pct", "alert_warn_pct"}
 
     if key not in {"theme", "panel_format", "panel_position", "poll_interval_sec",
-                   "show_reset_in_topbar", "show_icon", "show_alerts"}:
+                   "show_reset_in_topbar", "show_icon", "show_alerts",
+                   "alert_exhaust_pct", "alert_warn_pct"}:
         return False, f"Unknown option '{key}'"
 
     if key in bool_keys:
