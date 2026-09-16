@@ -51,6 +51,7 @@ class AIIndicator extends PanelMenu.Button {
 
         // Live countdown state (ticked every second)
         this._chips = [];          // menu countdown chips
+        this._barChips = [];       // top-bar countdown labels (per GLM account)
         this._tooltipAccounts = []; // GLM accounts shown in the panel tooltip
         this._tooltipText = null;
         this._tooltip = null;
@@ -67,12 +68,18 @@ class AIIndicator extends PanelMenu.Button {
     _startTicker() {
         if (this._tickId)
             GLib.source_remove(this._tickId);
-        // Keep live countdowns (tooltip + open menu chips) ticking every second
+        // Keep live countdowns (top-bar badges + tooltip + open menu chips) ticking
         this._tickId = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 1, () => {
+            this._updateBarChips();
             this._updateChips();
             this._updateTooltip();
             return GLib.SOURCE_CONTINUE;
         });
+    }
+
+    _updateBarChips() {
+        for (const c of this._barChips || [])
+            c.label.text = this._fmtCountdown(c.ms, true);
     }
 
     _fmtCountdown(ms, compact = false) {
@@ -111,6 +118,7 @@ class AIIndicator extends PanelMenu.Button {
             // Fallback: single text label (minimal format, no GLM data, offline)
             this._chipsBox.hide();
             this._label.show();
+            this._barChips = [];
             let text = s.template || s.text || '';
             if (s.template && s.template_vars) {
                 for (const [k, ms] of Object.entries(s.template_vars))
@@ -130,6 +138,7 @@ class AIIndicator extends PanelMenu.Button {
         };
         const th = this._thresholds();
         const bGlm = (theme.badge_icons && theme.badge_icons.glm) || '✦';
+        const showReset = !d.ui_options || d.ui_options.show_reset_in_topbar !== false;
         let baseFont = '';
         if (theme.topbar_font_weight)
             baseFont += `font-weight: ${theme.topbar_font_weight}; `;
@@ -141,6 +150,7 @@ class AIIndicator extends PanelMenu.Button {
         this._label.hide();
         this._chipsBox.show();
         this._chipsBox.destroy_all_children();
+        this._barChips = [];
 
         const segs = [];
         accounts.forEach((a, i) => {
@@ -151,7 +161,7 @@ class AIIndicator extends PanelMenu.Button {
             const tag = s.show_short !== false && a.short ? `${a.short} ` : '';
             const chip = new St.BoxLayout({
                 y_align: Clutter.ActorAlign.CENTER,
-                style: 'spacing: 4px;',
+                style: 'spacing: 5px;',
             });
             chip.add_child(new St.Label({
                 text: `${bGlm}${tag}${pct}%`,
@@ -159,12 +169,15 @@ class AIIndicator extends PanelMenu.Button {
                 style: `${baseFont}color: ${color};`,
             }));
             chip.add_child(this._miniBar(pct, this._usedColor(pct, T)));
-            if (fmt === 'full' && a.reset_ms)
-                chip.add_child(new St.Label({
+            if (showReset && a.reset_ms) {
+                const cd = new St.Label({
                     text: this._fmtCountdown(a.reset_ms, true),
                     y_align: Clutter.ActorAlign.CENTER,
-                    style: `${baseFont}color: ${T.muted}; font-size: 10px;`,
-                }));
+                    style: `${baseFont}color: ${T.muted};`,
+                });
+                this._barChips.push({ label: cd, ms: a.reset_ms });
+                chip.add_child(cd);
+            }
             segs.push(chip);
         });
 
@@ -180,17 +193,17 @@ class AIIndicator extends PanelMenu.Button {
         this._updateTooltip();
     }
 
-    _miniBar(pct, color, width = 36) {
+    _miniBar(pct, color, width = 40) {
         const track = new St.BoxLayout({
             y_align: Clutter.ActorAlign.CENTER,
-            style: `width: ${width}px; height: 5px; border-radius: 3px;` +
-                ` background-color: rgba(255, 255, 255, 0.22);`,
+            style: `width: ${width}px; height: 6px; border-radius: 3px;` +
+                ` background-color: rgba(255, 255, 255, 0.28);`,
         });
         const clamped = Math.max(0, Math.min(100, pct));
-        const w = clamped > 0 ? Math.max(3, Math.round(width * clamped / 100)) : 0;
+        const w = clamped > 0 ? Math.max(4, Math.round(width * clamped / 100)) : 0;
         if (w > 0)
             track.add_child(new St.BoxLayout({
-                style: `width: ${w}px; height: 5px; border-radius: 3px; background-color: ${color};`,
+                style: `width: ${w}px; height: 6px; border-radius: 3px; background-color: ${color};`,
             }));
         return track;
     }
