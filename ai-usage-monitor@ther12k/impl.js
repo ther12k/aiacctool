@@ -200,19 +200,24 @@ class AIIndicator extends PanelMenu.Button {
         this._updateTooltip();
     }
 
-    _miniBar(pct, color, width = 40) {
-        const track = new St.BoxLayout({
-            y_align: Clutter.ActorAlign.CENTER,
-            style: `width: ${width}px; height: 6px; border-radius: 3px;` +
-                ` background-color: rgba(255, 255, 255, 0.28);`,
-        });
-        const clamped = Math.max(0, Math.min(100, pct));
-        const w = clamped > 0 ? Math.max(4, Math.round(width * clamped / 100)) : 0;
-        if (w > 0)
-            track.add_child(new St.BoxLayout({
-                style: `width: ${w}px; height: 6px; border-radius: 3px; background-color: ${color};`,
+    _miniBar(pct, color, width = 44) {
+        // Same sibling-fill pattern as _barWidget (known to render in this
+        // shell): children carry the CSS sizes, the parent just wraps them
+        const val = Math.max(0, Math.min(100, pct));
+        const fillW = val > 0 ? Math.max(5, Math.round(width * val / 100)) : 0;
+        const restW = width - fillW;
+        const box = new St.BoxLayout({ y_align: Clutter.ActorAlign.CENTER });
+        if (fillW > 0)
+            box.add_child(new St.BoxLayout({
+                style: `width: ${fillW}px; height: 7px;` +
+                    ` background-color: ${color}; border-radius: 3px;`,
             }));
-        return track;
+        if (restW > 0)
+            box.add_child(new St.BoxLayout({
+                style: `width: ${restW}px; height: 7px;` +
+                    ` background-color: rgba(255, 255, 255, 0.30); border-radius: 3px;`,
+            }));
+        return box;
     }
 
     _accountColor(i) {
