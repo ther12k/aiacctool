@@ -32,6 +32,11 @@ class AIIndicator extends PanelMenu.Button {
         });
         this._box.add_child(this._icon);
 
+        // Structured badge chips: per-account colored % + horizontal mini bar
+        this._chipsBox = new St.BoxLayout({ y_align: Clutter.ActorAlign.CENTER });
+        this._chipsBox.hide();
+        this._box.add_child(this._chipsBox);
+
         this._label = new St.Label({
             text: _('AI: ...'),
             y_align: Clutter.ActorAlign.CENTER,
@@ -46,6 +51,7 @@ class AIIndicator extends PanelMenu.Button {
 
         // Live countdown state (ticked every second)
         this._chips = [];          // menu countdown chips
+        this._tooltipAccounts = []; // GLM accounts shown in the panel tooltip
         this._alertState = null;   // last seen alert snapshot
 
         // Start Periodic Polling (every 30 seconds)
@@ -58,10 +64,10 @@ class AIIndicator extends PanelMenu.Button {
     _startTicker() {
         if (this._tickId)
             GLib.source_remove(this._tickId);
-        // Re-render countdowns (badge + open menu chips) every second
+        // Keep live countdowns (tooltip + open menu chips) ticking every second
         this._tickId = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 1, () => {
-            this._renderBadge();
             this._updateChips();
+            this._updateTooltip();
             return GLib.SOURCE_CONTINUE;
         });
     }
@@ -90,13 +96,127 @@ class AIIndicator extends PanelMenu.Button {
     }
 
     _renderBadge() {
-        const s = (this._lastData && this._lastData.summary) || {};
-        let text = s.template || s.text || '';
-        if (s.template && s.template_vars) {
-            for (const [k, ms] of Object.entries(s.template_vars))
-                text = text.split(`{${k}}`).join(this._fmtCountdown(ms, true));
+        const d = this._lastData;
+        const s = (d && d.summary) || {};
+        const fmt = (d && d.ui_options && d.ui_options.panel_format) || 'compact';
+        const accounts = s.panel_accounts || [];
+        const useChips = accounts.length > 0 && fmt !== 'minimal';
+
+        this._tooltipAccounts = useChips ? accounts : [];
+
+        if (!useChips) {
+            // Fallback: single text label (minimal format, no GLM data, offline)
+            this._chipsBox.hide();
+            this._label.show();
+            let text = s.template || s.text || '';
+            if (s.template && s.template_vars) {
+                for (const [k, ms] of Object.entries(s.template_vars))
+                    text = text.split(`{${k}}`).join(this._fmtCountdown(ms, true));
+            }
+            this._label.text = text || _('AI Monitor');
+            this._updateTooltip();
+            return;
         }
-        this._label.text = text || _('AI Monitor');
+
+        const theme = d.theme || {};
+        const T = {
+            ok: theme.menu_ok_color || '#81c995',
+            warn: theme.menu_warn_color || '#fdd663',
+            err: theme.menu_err_color || '#f28b82',
+            muted: theme.menu_muted_color || '#9aa0a6',
+        };
+        const th = this._thresholds();
+        const bGlm = (theme.badge_icons && theme.badge_icons.glm) || '✦';
+        let baseFont = '';
+        if (theme.topbar_font_weight)
+            baseFont += `font-weight: ${theme.topbar_font_weight}; `;
+        if (theme.topbar_font_size)
+            baseFont += `font-size: ${theme.topbar_font_size}; `;
+        if (theme.topbar_font_family)
+            baseFont += `font-family: ${theme.topbar_font_family}; `;
+
+        this._label.hide();
+        this._chipsBox.show();
+        this._chipsBox.destroy_all_children();
+
+        const segs = [];
+        accounts.forEach((a, i) => {
+            const pct = Math.round(a.used_pct);
+            const exhausted = a.used_pct >= th.exhaust;
+            // Per-account text color; exhausted accounts always flash the error color
+            const color = exhausted ? T.err : this._accountColor(i);
+            const tag = s.show_short !== false && a.short ? `${a.short} ` : '';
+            const chip = new St.BoxLayout({
+                y_align: Clutter.ActorAlign.CENTER,
+                style: 'spacing: 4px;',
+            });
+            chip.add_child(new St.Label({
+                text: `${bGlm}${tag}${pct}%`,
+                y_align: Clutter.ActorAlign.CENTER,
+                style: `${baseFont}color: ${color};`,
+            }));
+            chip.add_child(this._miniBar(pct, this._usedColor(pct, T)));
+            if (fmt === 'full' && a.reset_ms)
+                chip.add_child(new St.Label({
+                    text: this._fmtCountdown(a.reset_ms, true),
+                    y_align: Clutter.ActorAlign.CENTER,
+                    style: `${baseFont}color: ${T.muted}; font-size: 10px;`,
+                }));
+            segs.push(chip);
+        });
+
+        const groupText = s.panel_group && s.panel_group.text;
+        if (groupText)
+            segs.push(new St.Label({
+                text: groupText,
+                y_align: Clutter.ActorAlign.CENTER,
+                style: `${baseFont}${theme.topbar_color ? `color: ${theme.topbar_color};` : ''}`,
+            }));
+
+        segs.forEach((w, i) => {
+            if (i > 0)
+                this._chipsBox.add_child(new St.Label({
+                    text: '·',
+                    y_align: Clutter.ActorAlign.CENTER,
+                    style: `color: ${T.muted};`,
+                }));
+            this._chipsBox.add_child(w);
+        });
+        this._updateTooltip();
+    }
+
+    _miniBar(pct, color, width = 32) {
+        const track = new St.BoxLayout({
+            y_align: Clutter.ActorAlign.CENTER,
+            style: `width: ${width}px; height: 4px; border-radius: 2px;` +
+                ` background-color: rgba(255, 255, 255, 0.16);`,
+        });
+        const clamped = Math.max(0, Math.min(100, pct));
+        const w = clamped > 0 ? Math.max(2, Math.round(width * clamped / 100)) : 0;
+        if (w > 0)
+            track.add_child(new St.BoxLayout({
+                style: `width: ${w}px; height: 4px; border-radius: 2px; background-color: ${color};`,
+            }));
+        return track;
+    }
+
+    _accountColor(i) {
+        const opts = (this._lastData && this._lastData.ui_options) || {};
+        const custom = opts.account_colors || [];
+        if (custom[i])
+            return custom[i];
+        const palette = ['#59a7ff', '#ffb454', '#7ee787', '#d2a8ff', '#ff7b72', '#56d4dd'];
+        return palette[i % palette.length];
+    }
+
+    _updateTooltip() {
+        const lines = (this._tooltipAccounts || []).map(a =>
+            `GLM ${a.name}: ${Math.round(a.used_pct)}% used · resets in ${this._fmtCountdown(a.reset_ms)}` +
+            `${a.reset_time ? ` (${a.reset_time})` : ''}`);
+        const s = (this._lastData && this._lastData.summary) || {};
+        if (!lines.length && s.text)
+            lines.push(s.text);
+        this.tooltip_text = lines.join('\n') || null;
     }
 
     _updateChips() {
@@ -178,7 +298,7 @@ class AIIndicator extends PanelMenu.Button {
         });
         this._settingsSubMenu.menu.addMenuItem(iconSwitch);
 
-        const resetSwitch = new PopupMenu.PopupSwitchMenuItem(_('Show reset countdown in top bar'), !!opts.show_reset_in_topbar);
+        const resetSwitch = new PopupMenu.PopupSwitchMenuItem(_('Reset countdown (tooltip + full format)'), !!opts.show_reset_in_topbar);
         resetSwitch.connect('toggled', (item, state) => {
             this._setOption('show_reset_in_topbar', state);
         });

@@ -193,7 +193,7 @@ DEFAULT_CONFIG = {
     "poll_interval_sec": 30,
     "panel_position": "center",  # "center", "left", "right"
     "panel_format": "compact",   # "compact", "standard", "full", "minimal"
-    "show_reset_in_topbar": True,
+    "show_reset_in_topbar": True,  # countdown in "full" badge format + bar tooltip
     "show_icon": True,
     "show_alerts": True,
     "alert_exhaust_pct": 95,
@@ -203,6 +203,7 @@ DEFAULT_CONFIG = {
         "topbar_font_size": "",
         "topbar_font_weight": "",
         "topbar_font_family": "",
+        "account_colors": [],
         "custom_badge_icons": {}
     },
     "providers": {
@@ -938,7 +939,8 @@ def generate_panel_summary(results, cfg, theme):
     Generates a concise label and status icon for the GNOME top bar, styled according to the active theme.
 
     Layout policy:
-    - Each GLM account gets its own badge WITH time-left (user request).
+    - Each GLM account gets its own badge: colored percent + horizontal mini bar.
+      The reset countdown lives in the bar tooltip and the menu rows, not the badge.
     - All other providers (Antigravity Claude/Gemini, Codex, custom APIs) are grouped
       into a single AVERAGE badge WITHOUT time-left.
     """
@@ -948,7 +950,6 @@ def generate_panel_summary(results, cfg, theme):
 
     b_glm = badges.get("glm", "⚡")
     b_grp = badges.get("group", "🌐")
-    b_rst = badges.get("reset", "⏳")
 
     parts = []        # final rendered segments
     tmpl_parts = []   # segments with {glmN} placeholders for live ticking in JS
@@ -956,9 +957,10 @@ def generate_panel_summary(results, cfg, theme):
     has_warning = False
     has_ok = False
 
-    # 1. GLM — one badge per account, each with reset countdown
+    # 1. GLM — one badge per account: percent + horizontal mini bar (rendered by JS)
     glm = results.get("glm", {})
     glm_used_min = []
+    panel_accounts = []
     if glm.get("enabled"):
         accounts = glm.get("accounts", [])
         multi = len([a for a in accounts if a.get("status") == "ok"]) > 1
@@ -976,29 +978,34 @@ def generate_panel_summary(results, cfg, theme):
             if used >= int(cfg.get("alert_warn_pct", 85)):
                 has_warning = True
             tag = f"{acc.get('short', '')} " if multi else ""
-            key = f"glm{gi}"
-            gi += 1
-            cd_c = (cd or "").replace(" ", "")
-            if show_reset and cd_c and reset_ms:
-                cd_vars[key] = reset_ms
-                ph = "{" + key + "}"
-                render_cd = f"{b_rst}{cd_c}"
-                tmpl_cd = f"{b_rst}{ph}"
-            else:
-                render_cd = tmpl_cd = ""
-
             nm = acc.get("name", "glm")
+            panel_accounts.append({
+                "name": nm,
+                "short": acc.get("short", ""),
+                "used_pct": used,
+                "reset_ms": reset_ms,
+                "reset_time": tok.get("reset_time", "")
+            })
+
             if p_format == "compact":
-                parts.append(f"{b_glm}{tag}{used}%{render_cd}")
-                tmpl_parts.append(f"{b_glm}{tag}{used}%{tmpl_cd}")
+                parts.append(f"{b_glm}{tag}{used}%")
+                tmpl_parts.append(f"{b_glm}{tag}{used}%")
             elif p_format == "standard":
-                parts.append(f"GLM-{nm} {used}%{render_cd and f' ({cd})'}".rstrip())
-                tmpl_parts.append(f"GLM-{nm} {used}%{tmpl_cd and f' ({ph})'}".rstrip())
+                parts.append(f"GLM-{nm} {used}%")
+                tmpl_parts.append(f"GLM-{nm} {used}%")
             elif p_format == "full":
-                parts.append(f"GLM[{nm}]: {used}% used{render_cd and ' · ' + cd}")
-                tmpl_parts.append(f"GLM[{nm}]: {used}% used{tmpl_cd and ' · ' + ph}")
+                cd_c = (cd or "").replace(" ", "")
+                key = f"glm{gi}"
+                if show_reset and cd_c and reset_ms:
+                    cd_vars[key] = reset_ms
+                    parts.append(f"GLM[{nm}]: {used}% used · {cd}")
+                    tmpl_parts.append(f"GLM[{nm}]: {used}% used · {{{key}}}")
+                else:
+                    parts.append(f"GLM[{nm}]: {used}% used")
+                    tmpl_parts.append(f"GLM[{nm}]: {used}% used")
             else:  # minimal
                 glm_used_min.append(f"{used:.0f}")
+            gi += 1
 
         if p_format == "minimal" and glm_used_min:
             seg = b_glm + "·".join(glm_used_min)
@@ -1035,6 +1042,7 @@ def generate_panel_summary(results, cfg, theme):
     if r9.get("enabled") and (r9.get("remote_running") or r9.get("local_running")):
         has_ok = True
 
+    group_text = None
     if group_remaining:
         avg = sum(group_remaining) / len(group_remaining)
         if p_format == "compact" or p_format == "minimal":
@@ -1045,6 +1053,7 @@ def generate_panel_summary(results, cfg, theme):
             seg = f"Others (avg of {len(group_remaining)}): {avg:.0f}% left"
         parts.append(seg)
         tmpl_parts.append(seg)
+        group_text = seg
     elif r9.get("enabled") and (r9.get("remote_running") or r9.get("local_running")):
         # Fallback when no quota-bearing provider is live: show how many
         # upstream accounts across the monitored providers are online.
@@ -1058,6 +1067,7 @@ def generate_panel_summary(results, cfg, theme):
                 seg = f"Others: {online} upstream accounts online (no quota data)"
             parts.append(seg)
             tmpl_parts.append(seg)
+            group_text = seg
 
     badge_text = " · ".join(parts) if parts else ("AI Monitor" if has_ok else "AI Offline")
     template = " · ".join(tmpl_parts) if tmpl_parts else badge_text
@@ -1067,6 +1077,9 @@ def generate_panel_summary(results, cfg, theme):
         "text": badge_text,
         "template": template,
         "template_vars": cd_vars,
+        "panel_accounts": panel_accounts,
+        "panel_group": {"text": group_text} if group_text else None,
+        "show_short": len(panel_accounts) > 1,
         "icon": icon,
         "show_icon": cfg.get("show_icon", True),
         "panel_position": cfg.get("panel_position", "center"),
@@ -1092,6 +1105,7 @@ def collect_all():
             "alert_warn_pct": int(cfg.get("alert_warn_pct", 85)),
             "show_reset_in_topbar": cfg.get("show_reset_in_topbar", True),
             "poll_interval_sec": cfg.get("poll_interval_sec", 30),
+            "account_colors": (cfg.get("appearance") or {}).get("account_colors", []),
         },
         "glm": check_glm(cfg),
         "antigravity": check_antigravity(cfg),

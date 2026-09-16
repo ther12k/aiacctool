@@ -24,7 +24,7 @@ Built natively for **GNOME Shell 46+** (Ubuntu 24.04+) with companion CLI and au
 - **9Router account health**: the provider checklist shows per-account status dots with the last error (e.g. `[402] You have reached the limit.`) under any failing account.
 - **Themes & Custom Appearance**: Choose from 6 curated themes (**Catppuccin Mocha**, **Nord Frost**, **Dracula Vampire**, **Cyberpunk Neon**, **Minimal Monochrome**, and **Default Cyber**) or customize colors, fonts, and icons directly.
 - **Theme Switcher**: Switch themes on the fly via the top-bar dropdown menu or the CLI (`aiacctool theme set catppuccin`).
-- **Multi-Account GLM**: Auto-discovers **all** your Z.ai keys (Claude Code settings, OpenCode auth, env vars) and shows **each account separately** in the top bar with its own usage % and reset countdown (e.g. `⚡c 51%⌛3h  ⚡o 100%⌛2h`).
+- **Multi-Account GLM**: Auto-discovers **all** your Z.ai keys (Claude Code settings, OpenCode auth, env vars) and shows **each account separately** in the top bar — its own text color, usage %, and a horizontal mini progress bar that fills green → amber → red (e.g. `⚡c 51%▓▓░ ⚡o 100%▓▓▓`). Reset countdowns live on the badge tooltip and in the menu.
 - **Grouped Average for Other Providers**: Antigravity (Claude/Gemini), Codex, and custom APIs collapse into a single averaged badge (e.g. `🌐62%`) without reset times, keeping the top bar compact.
 - **Zero-Config Auto Discovery**: Automatically reads existing credentials from `~/.claude/settings.json`, `~/.local/share/opencode/auth.json`, `~/.codex/auth.json`, `~/.9router/db/data.sqlite`, and local process sockets.
 
@@ -34,13 +34,15 @@ Built natively for **GNOME Shell 46+** (Ubuntu 24.04+) with companion CLI and au
 
 ### Top Bar Indicator
 ```text
-[✦logo] ✦c 15%⌛4h17m · ✦o 80%⌛5m34s · 🕸️6↑
+[✦logo] ✦c 15% ▓▓▓░░ · ✦o 80% ▓▓▓▓▓ · 🕸️6↑
 ```
-- `✦c 15%⌛4h17m` — Zhipu account "claude": 15% used, window resets in 4h17m
-- `✦o 80%⌛5m34s` — Zhipu account "opencode": 80% used, resets in 5m34s
+- `✦c 15%` + mini bar — Zhipu account "claude" in its own color (blue by default): 15% used, bar fill colored by threshold
+- `✦o 80%` + mini bar — Zhipu account "opencode" in a second color (orange by default); exhausted accounts flash the theme's error red
 - `🕸️6↑` — grouped badge for other providers: 6 upstream accounts online (switches to an averaged `XX%` when Antigravity/Codex report quotas)
+- Hover the badge for a tooltip with per-account reset countdowns (e.g. `GLM claude: 15% used · resets in 4h17m (13:40)`); `panel_format: full` also appends the countdown in the bar.
 - Status icon: Zhipu AI logo when healthy, warning icon when any quota crosses its threshold, offline icon otherwise.
-- `panel_format: minimal` renders the ultra-compact form `✦16·22 · 🕸️6↑` (no countdowns).
+- Per-account colors come from a built-in palette; override via `appearance.account_colors: ["#59a7ff", "#ffb454", …]` in `config.json`.
+- `panel_format: minimal` renders the ultra-compact form `✦16·22 · 🕸️6↑` (no bars).
 
 ### Rich Dropdown Menu (Click on Top Bar)
 The menu is organized as a compact status list — key numbers at a glance, details one click deep:
@@ -138,6 +140,7 @@ The configuration file is automatically created at `~/.config/ai-usage-monitor/c
     "topbar_font_size": "12px",
     "topbar_font_weight": "600",
     "topbar_font_family": "",
+    "account_colors": ["#59a7ff", "#ffb454"],
     "custom_badge_icons": {
       "glm": "⚡",
       "antigravity": "🌌"
