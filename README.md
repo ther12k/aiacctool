@@ -200,7 +200,8 @@ The configuration file is automatically created at `~/.config/ai-usage-monitor/c
 
 - `~/.local/bin/aiacctool` — Global CLI binary
 - `~/.local/share/gnome-shell/extensions/ai-usage-monitor@ther12k/`:
-  - `extension.js` — GNOME Shell 46 panel indicator and dropdown menu
+  - `extension.js` — Tiny stable entry/loader (never changes between deploys)
+  - `impl-<timestamp>.js` — The panel indicator and dropdown menu; a fresh uniquely-named build is stamped on every deploy so it bypasses GNOME's module cache
   - `ai-collector.py` — Multi-provider async API polling engine
   - `metadata.json` — GNOME extension descriptor
   - `stylesheet.css` — Menu and panel styling
@@ -208,14 +209,22 @@ The configuration file is automatically created at `~/.config/ai-usage-monitor/c
 
 ---
 
-## Restarting / Reloading GNOME Shell
+## Developing & Deploying
 
-If you edit the extension code:
+GNOME Shell caches extension ES modules for the whole session — a plain
+`gnome-extensions disable/enable` re-runs the **old** code, which makes edits
+appear to "not apply". The extension uses a cache-busting loader: `extension.js`
+stays tiny and stable, and every deploy stamps the implementation into a
+uniquely named `impl-<timestamp>.js` that the shell has never seen, so it is
+always evaluated fresh. Core `resource://` shell modules are never re-imported,
+making this safe.
+
 ```bash
-DISPLAY=:1 xdotool key "Alt+F2" && sleep 0.5 && DISPLAY=:1 xdotool type "r" && DISPLAY=:1 xdotool key "Return"
+./deploy.sh   # syntax-checks, copies files, stamps impl build, reloads
 ```
-Or toggle it via CLI:
-```bash
-gnome-extensions disable ai-usage-monitor@ther12k
-gnome-extensions enable ai-usage-monitor@ther12k
-```
+
+Only the very first install (or after removing the extension directory) needs a
+full logout/login so the shell discovers the extension; every later deploy
+applies within seconds of `deploy.sh` finishing. Check what the shell is
+running via the journal — each build logs `[AI Monitor] loaded impl-<stamp>`.
+
