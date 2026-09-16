@@ -193,7 +193,8 @@ DEFAULT_CONFIG = {
     "poll_interval_sec": 30,
     "panel_position": "center",  # "center", "left", "right"
     "panel_format": "compact",   # "compact", "standard", "full", "minimal"
-    "show_reset_in_topbar": True,  # countdown in "full" badge format + bar tooltip
+    "text_badge": False,         # true: bar + countdown drawn as text characters
+    "show_reset_in_topbar": True,  # countdown in badge (inline in text mode / full format)
     "show_icon": True,
     "show_alerts": True,
     "alert_exhaust_pct": 95,
@@ -934,6 +935,12 @@ def check_custom_apis(cfg):
     return results
 
 
+def _text_bar(pct, cells=8):
+    """Horizontal usage bar as text characters, e.g. '██░░░░░░' for 25%."""
+    filled = max(1, min(cells, int(round(pct / 100 * cells)))) if pct > 0 else 0
+    return "█" * filled + "░" * (cells - filled)
+
+
 def generate_panel_summary(results, cfg, theme):
     """
     Generates a concise label and status icon for the GNOME top bar, styled according to the active theme.
@@ -946,6 +953,7 @@ def generate_panel_summary(results, cfg, theme):
     """
     p_format = cfg.get("panel_format", "compact")
     show_reset = cfg.get("show_reset_in_topbar", True)
+    text_badge = bool(cfg.get("text_badge", False))
     badges = theme.get("badge_icons", {})
 
     b_glm = badges.get("glm", "⚡")
@@ -986,6 +994,23 @@ def generate_panel_summary(results, cfg, theme):
                 "reset_ms": reset_ms,
                 "reset_time": tok.get("reset_time", "")
             })
+
+            # Transitional text-badge mode: bar + countdown drawn as characters
+            # inside the badge text, rendered by any build (works even while a
+            # stale pre-chips extension module is still cached in the shell)
+            if text_badge:
+                key = f"glm{gi}"
+                bar = _text_bar(used)
+                cd_c = (cd or "").replace(" ", "")
+                if show_reset and cd_c and reset_ms:
+                    cd_vars[key] = reset_ms
+                    parts.append(f"{b_glm}{tag}{used:.0f}% {bar} {cd_c}")
+                    tmpl_parts.append(f"{b_glm}{tag}{used:.0f}% {bar} {{{key}}}")
+                else:
+                    parts.append(f"{b_glm}{tag}{used:.0f}% {bar}")
+                    tmpl_parts.append(f"{b_glm}{tag}{used:.0f}% {bar}")
+                gi += 1
+                continue
 
             if p_format == "compact":
                 parts.append(f"{b_glm}{tag}{used}%")
@@ -1077,7 +1102,7 @@ def generate_panel_summary(results, cfg, theme):
         "text": badge_text,
         "template": template,
         "template_vars": cd_vars,
-        "panel_accounts": panel_accounts,
+        "panel_accounts": [] if text_badge else panel_accounts,
         "panel_group": {"text": group_text} if group_text else None,
         "show_short": len(panel_accounts) > 1,
         "icon": icon,
@@ -1155,12 +1180,12 @@ def set_option(key, value):
     Sets a UI/behavior option in config.json from the menu or CLI.
     Accepts booleans as 'true'/'false', ints as digits, everything else verbatim.
     """
-    bool_keys = {"show_icon", "show_reset_in_topbar", "show_alerts"}
+    bool_keys = {"show_icon", "show_reset_in_topbar", "show_alerts", "text_badge"}
     int_keys = {"poll_interval_sec", "alert_exhaust_pct", "alert_warn_pct"}
 
     if key not in {"theme", "panel_format", "panel_position", "poll_interval_sec",
                    "show_reset_in_topbar", "show_icon", "show_alerts",
-                   "alert_exhaust_pct", "alert_warn_pct"}:
+                   "alert_exhaust_pct", "alert_warn_pct", "text_badge"}:
         return False, f"Unknown option '{key}'"
 
     if key in bool_keys:
