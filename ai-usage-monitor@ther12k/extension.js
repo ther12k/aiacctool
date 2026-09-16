@@ -33,7 +33,7 @@ class AIIndicator extends PanelMenu.Button {
         this._box.add_child(this._icon);
 
         // Structured badge chips: per-account colored % + horizontal mini bar
-        this._chipsBox = new St.BoxLayout({ y_align: Clutter.ActorAlign.CENTER });
+        this._chipsBox = new St.BoxLayout({ y_align: Clutter.ActorAlign.CENTER, style: 'spacing: 10px;' });
         this._chipsBox.hide();
         this._box.add_child(this._chipsBox);
 
@@ -52,6 +52,9 @@ class AIIndicator extends PanelMenu.Button {
         // Live countdown state (ticked every second)
         this._chips = [];          // menu countdown chips
         this._tooltipAccounts = []; // GLM accounts shown in the panel tooltip
+        this._tooltipText = null;
+        this._tooltip = null;
+        this._ensureTooltip();
         this._alertState = null;   // last seen alert snapshot
 
         // Start Periodic Polling (every 30 seconds)
@@ -173,29 +176,21 @@ class AIIndicator extends PanelMenu.Button {
                 style: `${baseFont}${theme.topbar_color ? `color: ${theme.topbar_color};` : ''}`,
             }));
 
-        segs.forEach((w, i) => {
-            if (i > 0)
-                this._chipsBox.add_child(new St.Label({
-                    text: '·',
-                    y_align: Clutter.ActorAlign.CENTER,
-                    style: `color: ${T.muted};`,
-                }));
-            this._chipsBox.add_child(w);
-        });
+        segs.forEach(w => this._chipsBox.add_child(w));
         this._updateTooltip();
     }
 
-    _miniBar(pct, color, width = 32) {
+    _miniBar(pct, color, width = 36) {
         const track = new St.BoxLayout({
             y_align: Clutter.ActorAlign.CENTER,
-            style: `width: ${width}px; height: 4px; border-radius: 2px;` +
-                ` background-color: rgba(255, 255, 255, 0.16);`,
+            style: `width: ${width}px; height: 5px; border-radius: 3px;` +
+                ` background-color: rgba(255, 255, 255, 0.22);`,
         });
         const clamped = Math.max(0, Math.min(100, pct));
-        const w = clamped > 0 ? Math.max(2, Math.round(width * clamped / 100)) : 0;
+        const w = clamped > 0 ? Math.max(3, Math.round(width * clamped / 100)) : 0;
         if (w > 0)
             track.add_child(new St.BoxLayout({
-                style: `width: ${w}px; height: 4px; border-radius: 2px; background-color: ${color};`,
+                style: `width: ${w}px; height: 5px; border-radius: 3px; background-color: ${color};`,
             }));
         return track;
     }
@@ -209,6 +204,49 @@ class AIIndicator extends PanelMenu.Button {
         return palette[i % palette.length];
     }
 
+    // Shell 46 has no native widget tooltips — draw our own hover popup below
+    // the indicator, kept current by the 1s ticker while it is visible.
+    _ensureTooltip() {
+        if (this._tooltip)
+            return;
+        this._tooltip = new St.Label({
+            visible: false,
+            style: 'background-color: rgba(24, 26, 31, 0.97); color: #e8eaed;' +
+                'font-size: 12px; font-weight: 500; padding: 8px 12px;' +
+                'border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.12);',
+        });
+        Main.layoutManager.uiGroup.add_child(this._tooltip);
+        this.connect('enter-event', () => this._showTooltip());
+        this.connect('leave-event', () => this._hideTooltip());
+        this.menu.connect('open-state-changed', (_, open) => {
+            if (open)
+                this._hideTooltip();
+        });
+        this.connect('destroy', () => {
+            this._tooltip.destroy();
+            this._tooltip = null;
+        });
+    }
+
+    _showTooltip() {
+        this._updateTooltip();
+        if (!this._tooltipText)
+            return;
+        this._tooltip.text = this._tooltipText;
+        this._tooltip.show();
+        const [x, y] = this.get_transformed_position();
+        const [, natW] = this._tooltip.get_preferred_width(-1);
+        let tx = Math.round(x + (this.width - natW) / 2);
+        tx = Math.max(6, Math.min(tx, global.stage.width - natW - 6));
+        this._tooltip.set_position(tx, Math.round(y + this.get_height() + 8));
+        this._tooltip.opacity = 255;
+    }
+
+    _hideTooltip() {
+        if (this._tooltip)
+            this._tooltip.visible = false;
+    }
+
     _updateTooltip() {
         const lines = (this._tooltipAccounts || []).map(a =>
             `GLM ${a.name}: ${Math.round(a.used_pct)}% used · resets in ${this._fmtCountdown(a.reset_ms)}` +
@@ -216,7 +254,9 @@ class AIIndicator extends PanelMenu.Button {
         const s = (this._lastData && this._lastData.summary) || {};
         if (!lines.length && s.text)
             lines.push(s.text);
-        this.tooltip_text = lines.join('\n') || null;
+        this._tooltipText = lines.join('\n') || null;
+        if (this._tooltip && this._tooltip.visible && this._tooltipText)
+            this._tooltip.text = this._tooltipText;
     }
 
     _updateChips() {

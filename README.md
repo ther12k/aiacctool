@@ -34,12 +34,12 @@ Built natively for **GNOME Shell 46+** (Ubuntu 24.04+) with companion CLI and au
 
 ### Top Bar Indicator
 ```text
-[✦logo] ✦c 15% ▓▓▓░░ · ✦o 80% ▓▓▓▓▓ · 🕸️6↑
+[✦logo]  ✦c 15% ▓▓▓░░░░  ✦o 80% ▓▓▓▓▓▓▓  🕸️6↑
 ```
 - `✦c 15%` + mini bar — Zhipu account "claude" in its own color (blue by default): 15% used, bar fill colored by threshold
 - `✦o 80%` + mini bar — Zhipu account "opencode" in a second color (orange by default); exhausted accounts flash the theme's error red
 - `🕸️6↑` — grouped badge for other providers: 6 upstream accounts online (switches to an averaged `XX%` when Antigravity/Codex report quotas)
-- Hover the badge for a tooltip with per-account reset countdowns (e.g. `GLM claude: 15% used · resets in 4h17m (13:40)`); `panel_format: full` also appends the countdown in the bar.
+- Hover the badge for a popup tooltip with live per-account reset countdowns (e.g. `GLM claude: 15% used · resets in 4h17m (13:40)`); `panel_format: full` also appends the countdown in the bar.
 - Status icon: Zhipu AI logo when healthy, warning icon when any quota crosses its threshold, offline icon otherwise.
 - Per-account colors come from a built-in palette; override via `appearance.account_colors: ["#59a7ff", "#ffb454", …]` in `config.json`.
 - `panel_format: minimal` renders the ultra-compact form `✦16·22 · 🕸️6↑` (no bars).
